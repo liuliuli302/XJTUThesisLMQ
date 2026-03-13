@@ -1,0 +1,94 @@
+{
+    "[tex]": {
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+    },
+    "latex-workshop.view.pdf.viewer": "tab",
+    "latex-workshop.latex.autoBuild.run": "never",
+    "latex-workshop.latex.outDir": "./Build/",
+    "latex-workshop.latex.rootFile.useSubFile": false,
+    "latex-workshop.view.pdf.internal.synctex.keybinding": "double-click",
+    "latex-workshop.intellisense.citation.backend": "biblatex",
+    "latex-workshop.latex.clean.fileTypes": [
+        "*.acn",
+        "*.acr",
+        "*.alg",
+        "*.aux",
+        "*.bbl",
+        "*.bcf",
+        "*.blg",
+        "*.brf",
+        "*.fdb_latexmk",
+        "*.fls",
+        "*.glg",
+        "*.glo",
+        "*.gls",
+        "*.hd",
+        "*.idx",
+        "*.ilg",
+        "*.ind",
+        "*.ist",
+        "*.lof",
+        "*.log",
+        "*.lot",
+        "*.nav",
+        "*.out",
+        "*.run.xml",
+        "*.thm",
+        "*.toc",
+        "*.toe",
+        "*.dvi",
+        "*.slg",
+        "*.slo",
+        "*.sls",
+        "*.snm",
+        "*.xdv",
+        "*.xdy",
+        "*.listing",
+    ],
+    "latex-workshop.latex.tools": [
+        {
+            "name": "latexmk",
+            "command": "latexmk",
+            "args": [
+                "-r",
+                "latexmkrc",
+                "%DOC%",
+            ],
+        },
+        {
+            "name": "xelatex",
+            "command": "xelatex",
+            "args": [
+                "-synctex=1",
+                "-interaction=nonstopmode",
+                "-file-line-error",
+                "-shell-escape",
+                "--output-directory=%OUTDIR%",
+                "%DOC%"
+            ],
+        },
+        {
+            "name": "biblatex",
+            "command": "biber",
+            "args": [
+                "-outdir=%OUTDIR%",
+                "%DOCFILE%"
+            ]
+        }
+    ],
+    "latex-workshop.latex.recipes": [
+        {
+            "name": "fast(xe)",
+            "tools": [
+                "xelatex"
+            ]
+        },
+        {
+            "name": "full(ltxmk)",
+            "tools": [
+                "latexmk"
+            ]
+        },
+    ],
+}
