@@ -1,338 +1,196 @@
 % !TeX root = ../main.tex
 
-\xchapter{浮动体：图表}{Floating: Figures, Tables}
+\xchapter{相关理论基础与技术原理}{Relevant theoretical foundations and technical principles}
 
-请先注意，在\LaTeX 中，图表不一定要像 Word 一样被固定在某个区域，程序会自动根据上下文为图片选择合适的位置，同时还有具有超链接的交叉引用自动定位图片位置，因此不要强求图片或表格一定处于某个位置。如非要定位，则应在浮动体环境中使用\clist{[H]}选项指定位置。
+本章主要介绍本文研究任务——基于大语言模型与多智能体的视频摘要技术所涉及的核心理论与技术框架。首先概述视频特征提取与跨模态对齐的基础理论，随后详细阐述大语言模型在文本聚合与语义评分中的应用，最后探讨基于
+Agent 的多智能体协作机制，为后续章节提出改进算法奠定理论支撑。
 
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 图、表、公式等一律用阿拉伯数字分章连续编号，如 图1-3、表2-1、（3-2）等。图、表、公式等与正文之间间隔0.5行。
+\xsection{视频特征提取与表征学习}{Video feature extraction and representation learning}
+% 本小结介绍传统视频处理的基本网络，主要介绍C3D、I3D。
+% 介绍其基本处理流程以及配图即可，其重要性不大，后续也有可能删除。
+视频摘要任务的起点是对海量、冗余的视觉信号进行有效的物理压缩与语义提炼。不同于静态图像，视频数据具有极高的维度，包含了空间维度的物体轮廓、纹理信息以及时间维度的动作轨迹与光流演变。高效的视频表征学习（Representation
+Learning）旨在构建一个紧凑的特征空间，使得计算机能够在该空间内识别出具有关键信息量的视觉事件。传统的视觉特征提取往往依赖于手工设计的描述子，而现代深度学习方法则通过
+3D 卷积神经网络（3D CNN）或膨胀 3D 卷积网络（I3D CNN）在端到端的训练中自动捕捉时空依赖性。这种从底层像素到高层语义向量的映射过程，不仅大幅降低了后续处理的计算开销，更通过特征对齐技术，为跨模态的文本生成与语义评分提供了统一的数学基石。
 
-    \item 图应有图题，表应有表题，并分别置于图号和表号之后，图号和图题应置于图下方的居中位置，表号和表题应置于表上方的居中位置。引用图或表应在图题或表题右上角标出文献来源。
-
-    \item 若图或表中有附注，采用英文小写字母顺序编号，附注写在图或表的下方。
-  \end{enumerate}
-\end{tcolorbox}
-
-\xsection{图}{Figures}
-
-
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 插图须紧跟文述。在正文中，一般应先见图号及图的内容后再见图，一般情况下不能提前见图，特殊情况须延后的插图不应跨节；
-    \item 提供照片应大小适宜，主题明确，层次清楚，金相照片一定要有比例尺；
-    \item 图应具有“自明性”，即只看图、图题和图例，不阅读正文，就可理解图意。图中的标目是说明坐标轴物理意义的项目，它是由物理量的符号或名称和相应的单位组成。物理量的符号由斜体字母标注，单位的符号使用正体字母标注，量与单位间用斜线隔开。例如：$I/\SI{}{A}$，$\rho/\SI{}{kg\cdot m^{-3}}$，$F/\SI{}{N}$，$v/\SI{}{m\cdot s^{-1}}$等等；
-    \item 图中用字为五号，如排列过密，用五号字有困难时，可小于五号字，但不得小于七号字；
-    \item 图尺寸的\textbf{一般宽高比}应为 \SI{6.67}{cm}$\times$\SI{5.00}{cm}。特殊情况下，也可为 \SI{9.00}{cm}$\times$\SI{6.75}{cm}，或 \SI{13.5}{cm}$\times$\SI{9.00}{cm}。总之，一篇论文中，同类图片的大小应该一致，编排美观、整齐；
-    \item 一幅图如有若干幅\textbf{分图}，均应编分图号，用(a)，(b)，(c),...... 按顺序编排，且各分图的分题注直接列在各自分图的正下方，总题注列在所有分图的下方正中「
-  \end{enumerate}
-\end{tcolorbox}
-
-\xsubsection{单张图片的使用}{Single Figure}
-
-\begin{texcodeonly}[]{}
-  \begin{figure}[h]
-    \centering
-    \includegraphics[width=.5\textwidth]{xjtu.pdf}
-    \caption{校徽}
-  \end{figure}
-\end{texcodeonly}
-
-\begin{figure}[h]
-  \centering
-  \includegraphics[width=.5\textwidth]{xjtu.pdf}
-  \caption{校徽}
-\end{figure}
-
-一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。一些图片下方的文字。
-
-\xsubsection{多张图片：应该使用 subcaption 而不是 subfigure}{Use subcaption instead of subfigure}
-
-\begin{texcodeonly}[]{}
-  \begin{figure}[h]
-    \begin{subfigure}[b]{0.49\linewidth}
-        \centering
-        \includegraphics[width=.5\textwidth]{xjtu.pdf}
-        \subcaption{校名}
-    \end{subfigure}
-    \begin{subfigure}[b]{0.49\linewidth}
-        \centering
-        \includegraphics[width=.5\textwidth]{xjtu.pdf}
-        \subcaption{校名}
-        \label{subfigure:icon}
-    \end{subfigure}
-    \caption{校徽}
-    \label{fig:icon}
-  \end{figure}
-\end{texcodeonly}
-
-\begin{figure}[h]
-  \begin{subfigure}[b]{0.49\linewidth}
-      \centering
-      \includegraphics[width=.5\textwidth]{xjtu.pdf}
-      \subcaption{校名}
-  \end{subfigure}
-  \begin{subfigure}[b]{0.49\linewidth}
-      \centering
-      \includegraphics[width=.5\textwidth]{xjtu.pdf}
-      \subcaption{校名}
-      \label{subfigure:icon}
-  \end{subfigure}
-  \caption{校徽}
-  \label{figure:icon}
-\end{figure}
-
-\xsubsection{多张子图分页}{Break multiple figures}
-
-\newcommand{\subfigg}{
-  \begin{subfigure}[b]{0.49\linewidth}
-    \centering
-    \includegraphics[width=.5\textwidth]{xjtu.pdf}
-    \subcaption{校名}
-  \end{subfigure}
-}
-
-为了简化叙述，定义一个命令 \clist{\subfigg} 代表插入一个子图：
-\begin{texcodeonly}[]{}
-  \newcommand{\subfigg}{
-    \begin{subfigure}[b]{0.49\linewidth}
-      \centering
-      \includegraphics[width=.5\textwidth]{xjtu.pdf}
-      \subcaption{校名}
-    \end{subfigure}
-  }
-\end{texcodeonly}
-
-在\clist[columbiablue]{subfig}宏包中提供了\clist{\ContinuedFloat}命令，使一个浮动体环境与其内子图的编号跟随前一个子图，此时两个浮动体环境可以分别设置标题，若具有相同的标题，或后续图的标题设置为 \clist{（续）}，则可以实现子图分页的效果。同时，模板提供了 \clist{\floatcontinue} ，通过包装\clist{\ContinuedFloat}使得子图在此命令处断页，不产生图标题，并在下一页生成图题。此两种命令均可使用，按照喜欢或需求使用。
-\clearpage
-\subsubsection{使用 ContinuedFloat}
-
-\begin{texcodeonly}[]{}
-  \begin{figure}[h]
-    \subfigg    \subfigg
-    \caption{校徽}
-  \end{figure}
-  
-  \begin{figure}[H]
-    \ContinuedFloat
-    \subfigg    \subfigg
-    \subfigg    \subfigg
-    \caption{校徽} % 或 \caption{（续）}
-  \end{figure}
-\end{texcodeonly}
-
-\begin{figure}[h]
-  \subfigg    \subfigg
-  \caption{校徽}
-\end{figure}
-
+\xsubsection{3D CNN}{3D Convolutional Neural Networks}
+% 图片部分
 \begin{figure}[H]
-  \ContinuedFloat
-  \subfigg    \subfigg
-  \subfigg    \subfigg
-  \caption{校徽} % 或 \caption{（续）}
+    \centering
+    \includegraphics[width=\textwidth]{c3d.pdf}
+    \caption{视频编码器结构示意图}\label{fig:c3d}
 \end{figure}
+% 图片部分结束
 
-\subsubsection{使用 floatcontinue}
+3D CNN 主要用于解决视频数据中时空信息耦合建模不足的问题。传统二维卷积神经网络通常仅在单帧图像上执行空间卷积，再借助后续时序模型补充时间依赖，这种分阶段建模方式容易导致运动信息表达不充分，尤其难以刻画连续动作中的速度变化、局部位移与上下文关联。针对该问题，3D CNN 在卷积核中同时引入时间维度，使网络能够直接从连续视频片段中联合提取空间纹理与时间动态特征，从而为动作识别、事件检测以及视频摘要中的关键片段表示提供更具判别性的时空特征。
 
-\begin{texcodeonly}[]{}
-  \begin{figure}[h]
-    \subfigg    \subfigg
-    \floatcontinue{tb}
-    \subfigg    \subfigg
-    \subfigg    \subfigg
-    \caption{校徽}
-  \end{figure}
-\end{texcodeonly}
+从模型结构上看，3D CNN 通常以连续视频帧堆叠形成的四维张量作为输入，并通过多层三维卷积、非线性激活与三维池化操作逐步完成局部运动模式和高层语义模式的抽取。如图~\ref{fig:c3d} 所示，该模型由输入视频块、三维卷积层、时空池化层以及全连接映射层等部分组成。其中，前端网络负责在短时窗口内提取局部时空响应，中间层通过感受野扩张聚合跨帧上下文信息，后端则将高维特征映射为紧凑的视频表示，以便用于后续的分类、检索或关键帧评分任务。
 
-\begin{figure}[h]
-  \subfigg    \subfigg
-  \floatcontinue{tb}
-  \subfigg    \subfigg
-  \subfigg    \subfigg
-  \caption{校徽}
+3D CNN 的核心计算在于三维卷积算子对输入体数据的局部感受野进行滑动聚合。设输入特征张量为 $X \in \mathbb{R}^{C\times T\times H\times W}$，卷积核权重为 $W \in \mathbb{R}^{C'\times C\times K_t\times K_h\times K_w}$，则第 $j$ 个输出通道在位置 $(t,x,y)$ 处的响应可表示为
+\begin{equation}
+Y_j(t,x,y)=\sum_{c=1}^{C}\sum_{\tau=0}^{K_t-1}\sum_{m=0}^{K_h-1}\sum_{n=0}^{K_w-1}W_{j,c}(\tau,m,n)X_c(t+\tau,x+m,y+n)+b_j,
+\end{equation}
+其中，$C$ 表示输入通道数，$K_t$、$K_h$ 和 $K_w$ 分别表示卷积核在时间、高度和宽度方向上的尺寸，$b_j$ 为偏置项。为进一步压缩冗余响应并增强局部不变性，时空池化操作可写为
+\begin{equation}
+Z_j(t,x,y)=\max_{(\tau,m,n)\in \Omega} Y_j(t+\tau,x+m,y+n),
+\end{equation}
+其中，$\Omega$ 表示给定的三维池化窗口。通过上述运算，网络能够在统一框架下同时建模外观结构与运动演化规律。
+
+相较于基于手工特征的传统视频表示方法，3D CNN 的主要优势在于其端到端的时空联合学习能力。该方法无需显式构造光流、轨迹或局部时序描述子，能够直接从原始帧序列中学习与任务相关的判别特征；同时，三维卷积对短时动态模式具有更强的建模能力，可较好地保留动作连续性与事件完整性。对于视频摘要任务而言，这种结构有助于提升关键片段表示的一致性与语义密度，为后续跨模态映射和摘要生成提供稳定的底层特征支撑。
+
+\xsubsection{I3D}{Inflated 3D ConvNet}
+% 图片部分
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{aigc/i3d.png}
+    \caption{视频编码器结构示意图}\label{fig:i3d_framework}
 \end{figure}
+% 图片部分结束
 
+I3D 主要用于解决视频建模中二维卷积网络时间感知能力不足的问题。传统图像模型虽然能够学习稳定的空间表征，但面对动作持续、状态转移以及跨帧上下文关联等时序模式时，往往需要额外模块补充动态信息，导致特征表达链路较长且时空耦合程度有限。I3D 通过将成熟的二维卷积结构扩展到三维时空域，使预训练图像模型能够直接适配视频输入，从而在保留空间表征能力的同时强化对运动演化规律的刻画。
 
-\clearpage
+从整体结构上看，I3D 以连续视频片段作为输入，通过对二维卷积核进行三维膨胀构造时空卷积层，并结合池化层、非线性激活层以及分类映射层逐步提取多尺度语义特征。如图~\ref{fig:i3d_framework} 所示，该模型通常由输入帧序列、Inflated 卷积模块、时空特征聚合模块和输出决策层组成。其中，前层负责捕捉局部纹理与短时运动响应，中高层进一步整合跨时间窗口的上下文信息，使网络能够在统一框架下完成空间外观与时间动态的联合编码。
 
-\xsection{表}{Tables}
+I3D 的核心思想在于将二维卷积核沿时间维进行膨胀，并以参数迁移方式初始化三维卷积权重。设二维卷积核为 $W^{2D} \in \mathbb{R}^{N\times N}$，时间维长度为 $T$，则对应的三维卷积核可表示为
+\begin{equation}
+W^{3D}(t,x,y)=\frac{1}{T}W^{2D}(x,y), \quad t=1,2,\ldots,T,
+\end{equation}
+其中，$t$ 表示时间索引，$(x,y)$ 表示空间位置，$\frac{1}{T}$ 用于保持卷积响应幅值的稳定性。对于输入视频特征张量 $X \in \mathbb{R}^{C\times T\times H\times W}$，其输出特征可进一步写为
+\begin{equation}
+Y_j(t,x,y)=\sum_{c=1}^{C}\sum_{\tau=0}^{T-1}\sum_{m=0}^{N-1}\sum_{n=0}^{N-1}W^{3D}_{j,c}(\tau,m,n)X_c(t+\tau,x+m,y+n),
+\end{equation}
+其中，$C$ 表示输入通道数，$Y_j(t,x,y)$ 为第 $j$ 个输出通道在位置 $(t,x,y)$ 处的响应。上述过程表明，I3D 能够在继承二维网络参数先验的基础上完成时空特征的协同建模。
 
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 如某个表需要转页接排，在随后的各页上应重复表的编号。编号后跟表题（可省略）和“（续）”，如表 1-1（续），续表均应重复表头和关于单位的陈述。表格的设计应紧跟文述。表的编排一般是内容和测试项目由左至右横读，数据依序竖读，应有自明性。若为大表或作为工具使用的表格，可作为附表在附录中给出，论文中的表格参数应标明量和单位的符号；
-    \item 表中各物理量及量纲均按国际标准(SI) 及国家规定的法定符号和法定计量单位标注；
-    \item 一律使用三线表，与文字齐宽，顶线与底线线粗为 $1.5$ pt，中线线粗是 $1$ pt；
-    \item 使用他人表格须注明出处。
-    \item 表中用字为五号字体。如排列过密，用五号字有困难时，可小于五号字，但不小于七号。
-    \item 表格必须通栏，即表格宽度与正文版面平齐。
-  \end{enumerate}
-\end{tcolorbox}
+相较于传统二维卷积网络或直接从头训练的三维模型，I3D 的优势在于其兼顾参数初始化效率与时空建模能力。一方面，二维预训练权重的引入提升了网络收敛稳定性，减轻了视频任务对大规模标注样本的依赖；另一方面，膨胀后的三维卷积结构能够更自然地描述动作连续性与场景变化过程。对于视频摘要与视频理解任务，I3D 所提取的特征通常具有更强的语义完整性与时间一致性，可为后续关键片段表示和跨模态语义对齐提供更可靠的底层支撑。
 
+\xsubsection{Vision Transformer}{Vision Transformer}
+% 图片部分
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{aigc/vision_transformer.png}
+    \caption{Vision Transformer 结构示意图}\label{fig:vision_transformer_framework}
+\end{figure}
+% 图片部分结束
+Vision Transformer 主要用于解决传统卷积网络在全局依赖建模方面受局部感受野限制的问题。对于高维视觉数据而言，远距离区域之间的语义关联往往决定了目标结构、场景组成及上下文关系，仅依靠逐层卷积堆叠进行信息传播，容易造成长程依赖表达不足。Vision Transformer 将图像表示为一组有序视觉标记，从而将自然语言处理中成熟的 Transformer 结构引入视觉表征学习任务。
 
-\xsubsection{普通表格}{Normal Tables}
+从模型结构上看，Vision Transformer 首先将输入图像划分为固定大小的图像块，并将其映射为低维嵌入序列，随后叠加位置编码后送入多层 Transformer 编码器进行全局特征交互。如图~\ref{fig:vision_transformer_framework} 所示，该模型通常由图像分块、线性投影、位置编码、多头自注意力模块以及前馈网络组成。其中，浅层模块负责完成局部块级表征映射，深层编码器则通过跨块信息聚合形成具有全局语义一致性的视觉表示。
 
+Vision Transformer 的核心计算包括块嵌入构造与自注意力权重分配。设输入图像为 $X\in\mathbb{R}^{H\times W\times C}$，块大小为 $P\times P$，则图像块数量为 $N=\frac{HW}{P^2}$，第 $i$ 个图像块的嵌入可写为
+\begin{equation}
+z_i^0=E x_i+p_i,
+\end{equation}
+其中，$x_i$ 表示第 $i$ 个图像块展平后的向量，$E$ 为线性投影矩阵，$p_i$ 为对应的位置编码。在此基础上，自注意力机制可表示为
+\begin{equation}
+\mathrm{Attention}(Q,K,V)=\mathrm{Softmax}\left(\frac{QK^{\top}}{\sqrt{d}}\right)V,
+\end{equation}
+其中，$Q$、$K$ 和 $V$ 分别表示查询矩阵、键矩阵和值矩阵，$d$ 为特征维度。该过程通过全局相关性计算实现不同图像块之间的信息交互与语义重加权。
 
-考虑到使用成本、内容与样式分离。模板默认调用现代化的表格绘制宏包 \clist[columbiablue]{tabularray}。该宏包的使用方法请使用 \clist{texdoc tabularray}，网上也有此手册的中文翻译。请确保使用的发行版包含这一宏包（即更新至 2023 及以后的版本）。
+相较于传统卷积结构，Vision Transformer 的优势在于其能够以统一的自注意力机制直接建模全局上下文关系，对复杂场景中的长距离依赖和整体布局具有更强的表达能力。同时，该方法结构规整、扩展性较强，便于与预训练策略及跨模态建模框架结合。在视频理解与视频摘要任务中，基于 Vision Transformer 提取的视觉特征通常更有利于形成一致的高层语义表示，为后续时序建模与语义对齐提供稳定基础。
 
-非跨页表格应使用 tblr 环境制作表格，使用 table 作为浮动体环境，使用 \clist{\toprule}，\clist{\midrule} 和 \clist{\bottomrule} 指定三线表的三条线：
+\xsection{LLM模型相关}{LLM-related models}
+大语言模型的语义建模能力建立在高效序列表示学习框架之上，其核心目标是在大规模文本上下文中捕获远距离依赖关系并形成稳定的语义表征。相较于传统循环神经网络依赖逐步递推完成状态传递的方式，基于注意力机制的模型能够直接建立任意位置之间的关联，从而缓解长序列处理中信息衰减、并行计算效率受限以及上下文建模范围不足等问题。Transformer 正是在这一背景下提出的关键结构，并成为后续预训练语言模型的重要基础。
 
-\begin{texcode}[]{}
-    \begin{table}[H]
-        \caption{tblr 基本用法}
-        \label{tbl:2-1}
-        \begin{tblr}{
-            % colspec={X[r,m,2]X[c,3]X[l,1]}
-            X[r,m,2]X[c,3]X[l,1]
-        }
-            \toprule
-            Head & Test & 测试 \\
-            \midrule
-            Class that has many accessor methods and accesses a lot of external data & ATFD is more than a few & 3 \\
-            1 & 2 & 3 \\
-            1 & 2 & 3 \\
-            \bottomrule
-        \end{tblr}
-    \end{table}
-\end{texcode}
+\xsubsection{Transformer}{Transformer}
+% 图片部分
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{aigc/transformer.png}
+    \caption{Transformer 结构示意图}\label{fig:transformer_framework}
+\end{figure}
+% 图片部分结束
+Transformer 主要用于解决序列建模过程中长程依赖捕获能力不足以及递归结构并行效率较低的问题。传统循环网络在处理长文本时通常需要沿时间步逐次传播隐状态，容易造成早期信息在传播过程中逐步衰减，也限制了大规模语料上的高效训练。针对这一问题，Transformer 通过自注意力机制直接建模序列内部任意位置之间的依赖关系，使语义信息能够在统一计算框架下完成全局交互，从而为文本编码、上下文理解以及生成建模提供更稳定的表示基础。
 
-tblr 环境各列的对齐方式可以以键值对的方式在必选参数中设置，或者直接作为唯一必选参数（参考 tabularray 手册第 24 页）。列类型包括 c/l/r, t/b/m, X 等。c/l/r 为默认的三种对齐方式，t/b/m 指定单元格内容超过列宽时垂直方向的对齐方式， X 类型会自动调整列宽使全表宽度与页宽一致，X 类型列的水平、垂直对齐方式以类似 X[c] 的方式在 X 后的方括号内指定。X 类型后的方括号可以指定此列宽度与其他X类列宽度的相对大小，也可使用 \clist{wd=A}直接指定列宽。推荐使用 X 作为列类型。
+从模型结构上看，Transformer 主要由输入嵌入层、位置编码模块、多头自注意力模块、前馈网络以及残差连接与层归一化单元组成，并在编码器与解码器堆叠结构中逐层提取上下文语义特征。如图~\ref{fig:transformer_framework} 所示，该模型首先将离散词元映射为连续向量表示，并叠加位置信息以保留序列顺序，随后通过多层注意力计算实现全局依赖建模，再由前馈网络完成非线性特征变换，最终得到适用于表示学习与序列生成任务的高层语义表示。
 
-\begin{texcode}[]{}
-    \begin{tblr}{
-        colspec={|ll|X[c]|rr|},
-        cell{1}{1}={r=3,c=2}{r,m},
-        cell{1}{3}={r=2,c=3}{l,t},
-        cell{3}{Z}={}{red},
-        hline{4-6}={2pt,blue},
-    }
-        \hline
-        1-1 & 1-2 & 1-3 & 1-4 & 1-5 \\
-        \hline
-        2-1 & 2-2 & 2-3 & 2-4 & 2-5 \\
-        \hline
-        3-1 & 3-2 & MIDDLE & 3-4 & 3-5 \\
-        % \hline (4th)
-        4-1 & 4-2 & 4-3 & 4-4 & 4-5 \\
-        % \hline (5th)
-        5-1 & 5-2 & 5-3 & 5-4 & 5-5 \\
-        % \hline (6th)
-    \end{tblr}
-\end{texcode}
+Transformer 的核心计算在于利用查询矩阵、键矩阵和值矩阵实现序列内部的相关性分配。设输入表示为 $X\in\mathbb{R}^{n\times d}$，则线性映射后可得查询矩阵 $Q$、键矩阵 $K$ 和值矩阵 $V$，其缩放点积注意力可表示为
+\begin{equation}
+\mathrm{Attention}(Q,K,V)=\mathrm{Softmax}\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V,
+\end{equation}
+其中，$n$ 表示序列长度，$d$ 表示特征维度，$d_k$ 表示键向量维度，$QK^{\top}$ 用于度量不同词元之间的相关性，$\mathrm{Softmax}(\cdot)$ 用于生成归一化权重。在此基础上，多头注意力机制可进一步写为
+\begin{equation}
+\mathrm{MultiHead}(Q,K,V)=\mathrm{Concat}(\mathrm{head}_1,\ldots,\mathrm{head}_h)W^O,
+\end{equation}
+其中，$h$ 表示注意力头数，$\mathrm{head}_i=\mathrm{Attention}(QW_i^Q,KW_i^K,VW_i^V)$，$W_i^Q$、$W_i^K$、$W_i^V$ 和 $W^O$ 为可学习参数矩阵。上述过程使模型能够从不同子空间同时刻画局部语义联系与全局上下文依赖。
 
-tabularray 的优点在于格式和内容分离，使用更贴合人类习惯。单元格的合并，文字、背景、边框的样式都可以放在参数中设置。 \clist{cell{R}{C}={merge}{style}}用于设置单元格合并，其中 R,C 指定合并单元格左上角的位置，merge参数指定合并多少行多少列，style 调整合并后的单元格样式，其中 R,C 除了使用行号进行索引，可以使用 X,Y,Z 索引倒数第三、二、一行/列，可以使用 odd/even 选择 奇/偶列，还可以使用连字符(dash)选择区间，非常方便。
+相较于基于循环或卷积结构的传统序列模型，Transformer 的主要优势在于其具备更强的全局依赖建模能力和更高的并行计算效率。该方法不依赖逐时刻递推，能够在训练阶段同时处理整段序列信息，并通过多头注意力机制增强对多粒度语义关系的表达能力。此外，Transformer 结构规整、扩展性较强，便于与大规模预训练策略结合，因而在自然语言理解、文本生成以及多模态语义对齐等任务中形成了广泛应用基础。
 
-\xsubsection{复杂表格}{Complicated tables}
+\xsubsection{基于提示工程的上下文学习与推理机制}{In-context learning and reasoning mechanism based on prompt engineering}
+基于提示工程的上下文学习与推理机制主要用于解决大语言模型在特定任务适配过程中对参数更新依赖较强、任务说明不明确以及推理路径不稳定等问题。传统监督微调虽然能够增强模型对下游任务的适应能力，但通常需要额外标注数据与训练成本。提示工程则通过构造任务指令、示例上下文与约束条件，引导模型在参数保持不变的前提下完成语义迁移与推理决策，从而使模型能够依据输入上下文动态激活已有知识，并在少样本甚至零样本场景下形成可用的任务响应。
 
-在三线表中可以加辅助线，以适应较复杂表格的需要，具体使用方法请自行阅读宏包：
+从计算形式上看，该机制可视为在给定提示模板与上下文示例条件下的条件概率建模过程。设输入查询为 $x$，上下文示例集合为 $\mathcal{D}_c=\{(x_i,y_i)\mid i=1,2,\ldots,m\}$，提示模板为 $\pi$，则目标输出可表示为
+\begin{equation}
+y^{*}=\arg\max_{y} P_{\theta}(y\mid x,\mathcal{D}_c,\pi),
+\end{equation}
+其中，$P_{\theta}(\cdot)$ 表示参数固定的大语言模型所定义的条件分布，$m$ 表示上下文示例数量，$y^{*}$ 表示最优生成结果。在序列生成过程中，模型对提示中各标记的关注程度通常由自注意力权重决定，其上下文聚合形式可写为
+\begin{equation}
+\alpha_{t,i}=\frac{\exp\left(q_t^{\top}k_i/\sqrt{d}\right)}{\sum_{j=1}^{n}\exp\left(q_t^{\top}k_j/\sqrt{d}\right)}, \quad h_t=\sum_{i=1}^{n}\alpha_{t,i}v_i,
+\end{equation}
+其中，$q_t$ 表示时刻 $t$ 的查询向量，$k_i$ 与 $v_i$ 分别表示第 $i$ 个上下文标记对应的键向量和值向量，$d$ 表示特征维度，$h_t$ 为融合上下文后的隐状态表示。上述过程表明，提示内容不仅决定任务边界，还直接影响模型在推理时对关键信息的选择与组合方式。
 
-\begin{texcode}[]{}
-\begin{table}[H]
-  \centering
-  \caption{compare with other approachs}
-  \label{table:methodcompare}
-  \begin{tblr}{
-      colspec={*{7}{X[c]}},
-      cell{1}{1}={r=2}{c,m},
-      cell{1}{2,5}={c=3}{c,m},
-      hline{2,4,6}={1pt},
-      hline{1,3,Z}={1.5pt},
-      row{4,5}={rowsep=0pt},
-      row{Z}={m,font=\bfseries},
-  }
-    Model & trigger inditification & & & Event Extraction & & \\
-    & P(\%) & R(\%) & F1(\%) & P(\%) & R(\%) & F1(\%) \\
-    Baseline1 & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 \\
-    Baseline2  & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 \\
-    Baseline3  & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 \\
-    Our approach  & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 & 76.84 \\
-  \end{tblr}
-\end{table}
-\end{texcode}
+相较于依赖参数更新的传统适配方法，基于提示工程的上下文学习机制具有部署灵活、样本需求较低以及任务迁移速度较快等特点。该方法能够通过调整指令形式、示例顺序与约束描述来改变模型输出分布，因而在无需重训练的条件下即可支持分类、抽取、摘要与复杂推理等多类任务。同时，显式的提示设计有助于增强推理过程的结构化程度，提高模型对任务目标、条件限制与输出格式的遵循能力，因此在大语言模型驱动的智能分析系统中具有较高的应用价值。
 
-\xsubsection{长表格}{Long Tables}
+\xsubsection{多模态大语言模型的视觉语义建模机制}{Visual semantic modeling mechanism of multimodal large language models}
+多模态大语言模型的视觉语义建模机制主要用于解决图像或视频内容难以直接映射到语言语义空间的问题。传统视觉模型通常侧重局部感知与类别判别，而语言模型擅长处理离散符号序列与上下文推理，二者在表示空间、信息粒度和监督目标上存在明显差异。为实现跨模态理解，需要通过视觉编码、特征对齐与语义注入等过程，将连续视觉信号转化为能够被语言模型消费的高层语义标记，从而支撑视觉问答、图文描述与视频语义分析等任务。
 
-当表格过长时，使用\clist{longtblr}环境，此时不需要浮动体环境。在可选参数中需要设置\clist{theme=xjtu_std}，以调用预先设置好的续表样式，同时设置表格标题、label、脚注等，具体使用方法请自行阅读宏包。
+从计算过程上看，该机制通常首先利用视觉编码器提取图像区域或视频帧特征，再通过投影层映射至语言嵌入空间。设输入视觉序列为 $V=\{v_i\mid i=1,2,\ldots,N\}$，其中 $N$ 表示视觉标记数量，则跨模态映射结果可写为
+\begin{equation}
+z_i=W_p v_i+b_p,
+\end{equation}
+其中，$W_p$ 与 $b_p$ 分别表示投影矩阵和偏置项，$z_i$ 表示第 $i$ 个视觉标记的语义嵌入。在此基础上，语言模型通过交叉注意力完成视觉信息与文本上下文的融合，其计算形式可表示为
+\begin{equation}
+H=\operatorname{Softmax}\left(\frac{Q_{z}K_{x}^{\mathrm{T}}}{\sqrt{d}}\right)V_{x},
+\end{equation}
+其中，$Q_{z}$ 表示由视觉嵌入构造的查询矩阵，$K_{x}$ 与 $V_{x}$ 分别表示文本上下文对应的键矩阵和值矩阵，$d$ 表示特征维度，$H$ 为融合后的联合语义表示。上述过程表明，视觉语义建模的核心在于通过统一表示空间建立视觉实体、场景关系与语言概念之间的对应关系。
 
-\begin{texcodeonly}[]{}
-    \begin{longtblr}[
-        theme = xjtu_std,
-        caption = {A Long Long Long Long Long Long Long Table },
-        entry = {Short Caption},
-        label = {tblr:test},
-        note{a} = {脚注},
-        note{$\dag$} = {还是脚注},
-        remark{Note} = {注释，即表格内没有标注符号的脚注},
-        remark{Source} = {还是注释},
-    ]{
-        colspec = {XX[c]X},
-        rowhead = 1, rowfoot = 0,
-    }
-    \toprule
-    Head & Head & Head \\
-    \midrule
-    Epsilon & Zeta\TblrNote{a} & Eta \\
-    Iota & Kappa\TblrNote{$\dag$} & Lambda \\
-    Nu & Xi & Omicron \\
-    \dots 
-    Foot & Foot & Foot \\
-    \bottomrule
-    \end{longtblr}
-\end{texcodeonly}
+相较于将视觉识别与语言理解割裂处理的传统流水线方法，多模态大语言模型的视觉语义建模机制能够在统一框架下实现跨模态信息对齐与联合推理。该方法不仅保留了视觉编码器对细粒度内容的感知能力，还能够借助语言模型的上下文建模优势增强抽象语义表达与关系理解能力。因此，该机制更适用于复杂场景中的目标关联分析、事件语义概括与多模态知识组织，并为后续高层语义生成提供一致的表示基础。
 
-\begin{longtblr}[
-        theme = xjtu_std,
-        caption = {A Long Long Long Long Long Long Long Table },
-        entry = {Short Caption},
-        label = {tblr:test},
-        note{a} = {脚注},
-        note{$\dag$} = {还是脚注},
-        remark{Note} = {注释，即表格内没有标注符号的脚注},
-        remark{Source} = {还是注释},
-    ]{
-        colspec = {XX[c]X},
-        rowhead = 1, rowfoot = 0,
-    }
-    \toprule
-    Head & Head & Head \\
-    \midrule
-    Head & Head & Head \\
-    Alpha & Beta & Gamma \\
-    Epsilon & Zeta\TblrNote{a} & Eta \\
-    Iota & Kappa\TblrNote{$\dag$} & Lambda \\
-    Nu & Xi & Omicron \\
-    Rho & Sigma & Tau \\
-    Phi & Chi & Psi \\
-    %
-    % ......
-    Alpha & Beta & Gamma \\
-    Epsilon & Zeta & Eta \\
-    Iota & Kappa & Lambda \\
-    Nu & Xi & Omicron \\
-    Rho & Sigma & Tau \\
-    Phi & Chi & Psi \\
-    % Foot & Foot & Foot \\
-    Alpha & Beta & Gamma \\
-    \midrule
-    Epsilon & Zeta & Eta \\
-    Iota & Kappa & Lambda \\
-    Nu & Xi & Omicron \\
-    Rho & Sigma & Tau \\
-    Phi & Chi & Psi \\
-    Foot & Foot & Foot \\
-    Alpha & Beta & Gamma \\
-    Epsilon & Zeta & Eta \\
-    Iota & Kappa & Lambda \\
-    Nu & Xi & Omicron \\
-    Rho & Sigma & Tau \\
-    Phi & Chi & Psi \\
-    Foot & Foot & Foot \\
-    Alpha & Beta & Gamma \\
-    Epsilon & Zeta & Eta \\
-    Iota & Kappa & Lambda \\
-    Nu & Xi & Omicron \\
-    Rho & Sigma & Tau \\
-    Phi & Chi & Psi \\
-    Foot & Foot & Foot \\
-    \bottomrule
-\end{longtblr}
+\xsection{agent智能体}{Agent intelligence}
+Agent 机制的引入主要用于解决大语言模型在复杂任务处理中缺乏显式规划、外部工具调用能力有限以及多步推理稳定性不足等问题。传统语言模型通常以单轮生成方式完成任务响应，虽然能够处理局部语义推断，但面对跨步骤决策、环境交互与状态更新任务时，容易出现目标漂移、上下文遗忘和推理链中断等现象。基于大语言模型的 Agent 推理机制则通过将语言模型与任务规划、记忆管理、动作执行及反馈修正过程相结合，使系统能够在动态环境中持续感知任务状态并生成更具目标一致性的决策序列。
+
+\xsubsection{基于大语言模型的 Agent 推理机制}{Agent reasoning mechanism based on large language models}
+% 图片部分
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{aigc/agent_reasoning_framework.png}
+    \caption{Agent 推理框架示意图}\label{fig:agent_reasoning_framework}
+\end{figure}
+% 图片部分结束
+基于大语言模型的 Agent 推理机制主要用于解决开放环境下复杂任务求解过程中规划深度不足、动作选择不连续以及外部知识利用受限等问题。在多阶段信息处理场景中，单次文本生成往往难以同时覆盖目标分解、证据检索、工具调用与结果校验等多个环节。为提高任务求解的可控性与连贯性，Agent 通常将推理过程拆解为“感知、规划、行动、反馈”四类功能模块，并在循环交互中逐步逼近目标状态，从而增强大语言模型对长链任务的执行能力。
+
+从整体结构上看，Agent 推理机制通常由环境观测单元、任务规划模块、记忆存储模块、工具执行模块和策略更新模块组成。如 Fig.~\ref{fig:agent_reasoning_framework} 所示，系统首先接收环境状态与任务指令，经由语言模型生成当前阶段的思维表示与候选动作，再结合长期记忆与外部工具返回结果完成状态修正，最终形成面向目标约束的下一步决策。其中，规划模块负责生成子任务序列，记忆模块用于维护历史交互信息与中间结论，执行模块则承担检索、计算、调用接口等具体操作，从而构成闭环式的推理与决策链路。
+
+从计算角度看，Agent 在时刻 $t$ 的决策可表示为对历史轨迹条件下动作分布的建模。设环境状态为 $s_t$，历史交互轨迹为 $\tau_t=\{(s_k,a_k,o_k)\mid k=1,2,\ldots,t-1\}$，其中 $a_k$ 表示第 $k$ 步动作，$o_k$ 表示执行反馈，则当前动作选择可写为
+\begin{equation}
+a_t^{*}=\arg\max_{a} P_{\theta}(a\mid s_t,\tau_t,m_t),
+\end{equation}
+其中，$P_{\theta}(\cdot)$ 表示由大语言模型定义的策略分布，$m_t$ 表示时刻 $t$ 的记忆上下文，$a_t^{*}$ 为最优动作。在执行动作后，Agent 还需要依据反馈更新内部状态，其记忆状态转移过程可表示为
+\begin{equation}
+m_{t+1}=f\left(m_t,s_t,a_t,o_t\right),
+\end{equation}
+其中，$f(\cdot)$ 表示记忆更新函数，$o_t$ 表示当前动作对应的环境反馈。上述两式表明，Agent 推理并非静态文本映射，而是在状态演化、动作选择与反馈修正共同作用下完成的序列决策过程。
+
+相较于仅依赖单轮生成的传统语言模型应用方式，基于大语言模型的 Agent 推理机制具有更强的任务分解能力、环境适应能力与过程可解释性。该方法能够根据中间结果动态调整后续策略，并通过记忆机制保持跨步骤语义一致性，同时借助外部工具扩展模型在检索、计算和结构化操作方面的能力。因此，在多模态理解、复杂信息分析和自动化任务执行等场景中，Agent 推理机制能够提供更稳定的决策组织方式，并为高层智能行为建模奠定统一的技术基础。
+
+\xsubsection{多 Agent 协作机制}{Multi-Agent collaboration mechanism}
+多 Agent 协作机制主要用于解决单一智能体在复杂任务处理中知识覆盖范围有限、推理视角单一以及并行决策能力不足等问题。当任务同时涉及信息检索、语义理解、策略规划和结果校验等多个环节时，单智能体往往难以在有限上下文内持续保持全局最优决策。多 Agent 协作通过引入具有不同职能分工的多个智能体，将整体任务拆分为若干可并行处理的子问题，并借助通信与协调过程完成中间结论共享，从而提升复杂任务求解过程中的稳定性与组织性。
+
+% 图片部分
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{aigc/multi_agent_framework.png}
+    \caption{多 Agent 协作框架示意图}\label{fig:multi_agent_framework}
+\end{figure}
+% 图片部分结束
+从整体结构上看，多 Agent 协作机制通常由任务分配模块、角色智能体集合、通信协调模块以及结果聚合模块组成。如 Fig.~\ref{fig:multi_agent_framework} 所示，系统首先依据任务目标将原始问题分解为若干子任务，再分派给规划、执行、评估或监督等不同角色的智能体独立处理。各智能体在局部上下文中生成中间推理结果，并通过通信通道交换状态信息与候选结论，最终由聚合模块对多源结果进行一致性分析与全局整合，从而形成面向整体目标的协同决策输出。
+
+从计算角度看，协作过程可表示为多智能体条件决策与联合聚合的组合建模。设时刻 $t$ 的全局状态为 $s_t$，第 $i$ 个智能体的局部记忆为 $m_i$，协作上下文为 $c_t$，则该智能体对动作 $a_i$ 的选择可表示为
+\begin{equation}
+a_i^{*}=\arg\max_{a_i} P_{\theta_i}(a_i\mid s_t,m_i,c_t),
+\end{equation}
+其中，$P_{\theta_i}(\cdot)$ 表示第 $i$ 个智能体对应的策略分布，$a_i^{*}$ 为其最优局部动作。设各智能体生成的中间表示为 $h_i$，则全局协同结果可进一步写为
+\begin{equation}
+H_t=\sum_{i=1}^{N}\omega_i h_i, \quad \omega_i=\frac{\exp(e_i)}{\sum_{j=1}^{N}\exp(e_j)},
+\end{equation}
+其中，$N$ 表示参与协作的智能体数量，$\omega_i$ 表示第 $i$ 个智能体在结果聚合中的权重，$e_i$ 表示其当前输出的重要性评分，$H_t$ 表示融合后的全局语义表示。上述过程说明，多 Agent 协作的关键在于通过角色分工与加权聚合实现局部能力向全局决策能力的转化。
+
+相较于依赖单智能体独立完成全部推理流程的方法，多 Agent 协作机制具有更强的任务分解能力、并行处理能力与容错能力。该方法能够使不同智能体分别聚焦于规划、执行、验证和反馈等专门环节，从而降低单一路径推理失误对整体结果的影响。同时，通信与聚合机制有助于形成跨角色的互补信息流，提高复杂场景下的决策一致性与语义完备性。因此，多 Agent 协作机制更适用于多约束、多阶段和高复杂度的智能分析任务，并为构建可扩展的智能系统组织结构提供了理论支撑。
+

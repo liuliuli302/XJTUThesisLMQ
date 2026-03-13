@@ -1,5 +1,8 @@
 $ENV{'TZ'}='Asia/Shanghai';
 
+use File::Find;
+use File::Path qw(make_path);
+
 $pdf_mode = 5;
 $postscript_mode = 0;
 $dvi_mode = 0;
@@ -7,6 +10,30 @@ $preview_mode = 0;
 $cleanup_mode = 0;
 
 $out_dir = "./Build";
+
+sub ensure_output_subdirs {
+  return unless defined $out_dir && $out_dir ne '';
+
+  my %dirs;
+  find(
+    {
+      wanted => sub {
+        return unless -f $_ && /\.tex\z/;
+        my $dir = $File::Find::dir;
+        return if $dir eq '.';
+        return if $dir eq $out_dir || index($dir, "$out_dir/") == 0;
+        $dirs{$dir} = 1;
+      },
+    },
+    '.'
+  );
+
+  for my $dir (sort keys %dirs) {
+    make_path("$out_dir/$dir");
+  }
+}
+
+ensure_output_subdirs();
 
 $xelatex = "xelatex -synctex=1 -interaction=nonstopmode -file-line-error -shell-escape %O %S";
 $biber = "biber %O %S";
