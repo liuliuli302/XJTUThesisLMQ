@@ -1,16 +1,31 @@
 
 % !TeX root = ../main.tex
 \begin{englishabstract}
-    \footnotetext{*The work was supported by the Foundation (foundation ID).}
-    % \astfootnote{The work was supported by the Foundation (foundation ID).}
-    \blindtext
 
-    \blindtext
+    The rapid advancement of digital technologies has resulted in an overwhelming
+    surge of video content, thereby creating an urgent demand for efficient
+    video summarization techniques to manage and extract relevant information. Existing
+    approaches are often overly complex and computationally intensive,
+    highlighting the necessity for lightweight solutions that are more practical
+    and user-friendly in real-world applications.
 
-    \blindtext
+    To address these limitations, we propose a novel Training-Free approach that
+    leverages Multimodal Large Language Models (MLLMs) with a segment-wise similarity
+    contrast mechanism. This framework utilizes the generalization strength of
+    MLLMs to evaluate video frames, and further refines the assessment through cross-modal
+    similarity between image and text features, significantly reducing the
+    architectural complexity and computational cost of the model.
 
-    \blindtext
+    Furthermore, our method, \textbf{T}raning-\textbf{F}ree \textbf{V}ideo
+    \textbf{S}ummarization \textbf{N}etwork (\textbf{TFVSN}), first directly
+    estimates the importance scores of video frame sequences using MLLMs; Second,
+    it generates textual captions and corresponding text features through Blip2,
+    which are then compared with visual features from video frames. The
+    similarity results serve to enhance the final importance scoring. Our experimental
+    results demonstrate that our method achieves performance comparable to unsupervised
+    approaches, and even surpasses some supervised methods on certain datasets, which
+    highlights the potential of Training-Free architectures for video-related tasks.
 
-    \englishkeywordstype{MHD equations; Finite element methods; Decoupled scheme; Stability; Convergence; Structure preserving; Preconditioning method}{Theoretical Research}
+    \englishkeywordstype{Video summarization; Multimodal LLMs; Training-free; Cross-modal alignment; Semantic similarity}{Application Fundamentals}
 
 \end{englishabstract}

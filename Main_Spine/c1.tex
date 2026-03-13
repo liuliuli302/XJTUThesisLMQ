@@ -2,274 +2,105 @@
 
 \xchapter{绪论}{Introductions}
 
-\xsection{背景}{Backgrounds}
+\xsection{选题意义及应用背景}{Backgrounds}
 
-本文档仅提供部分可能用到的示例，系统的学习 \LaTeX 用法请参考其他书目，如 \emph{lshort}，可通过在 shell(命令行/cmd) 中执行 \clist{texdoc lshort-zh} 获得中文版。
+在当今数字化信息爆炸的时代，数字视频内容已经渗透到人类生活的方方面面。从传统的电视节目、电影艺术到新兴的短视频（Vlogs）、在线直播以及游戏录像，多媒体资源以其直观、生动的特性，极大地丰富了人们的日常生活，并成为信息传播与娱乐消费的核心载体。然而，视频数据的海量增长也带来了一个严峻的挑战：信息过载。面对浩如烟海的视频资源，要求用户耗费大量时间完整观看每一个视频以获取关键信息已成为一种奢侈的负担。因此，如何在保留视频核心内容的前提下，通过自动化技术对冗长的视频进行“瘦身”，已成为计算机视觉和多媒体处理领域亟待解决的热点问题。视频摘要（Video
+Summarization）技术应运而生，其旨在通过算法自动提取视频中最具代表性、最显著的帧或片段，生成一段精炼的摘要，从而帮助用户在极短的时间内理解视频的主旨大意。
 
-同时，务必意识到 \LaTeX 的工作及使用方式与 Microsoft Word 有极大的不同，不要问「怎么在 \LaTeX 中实现 Word 的 xx 功能」。
+从技术发展的演进历程来看，传统的视频摘要方法主要依赖于监督学习、非监督学习以及弱监督学习范式。监督学习方法\cite{huang2023causalainer,
+zhao2017hierarchical, chen2022video}通常依赖于大量由人工标注的关键帧或视频片段作为金标准，通过深度神经网络学习视频内容的显著性特征。虽然这类方法在特定数据集上表现优异，但其对大规模高质量标注数据的依赖限制了模型的扩展性与迁移能力。非监督学习方法\cite{liang2022video,
+mahasseni2017unsupervised, apostolidis2022summarizing}则试图通过挖掘视频内部的固有属性（如帧间相似性、稀疏性或内容多样性）来生成摘要，尽管缓解了数据标注的压力，但往往难以捕捉高层语义信息。弱监督方法\cite{ye2021temporal,
+narasimhan2022tl}则作为一种折中方案，利用粗粒度标签或用户交互信号进行引导。然而，无论是哪种传统范式，通常都需要复杂的网络设计和高昂的离线训练过程，且模型往往被限制在特定的领域（Domain-specific），难以直接部署到计算资源有限或领域多变的实际生产环境中。
 
-\xsection{符号说明}{Examples}
+近年来，多模态大语言模型（Multimodal Large Language Models,
+MLLMs）的突破性进展，如 GPT-4V\cite{achiam2023gpt}、LLaVA-Video\cite{zhang2024video}等，为视觉理解任务开辟了全新的路径。这些模型通过在海量跨模态数据上的预训练，展现出了卓越的泛化能力和逻辑推理能力，使得研究者能够将视觉任务重新构建为基于提示（Prompt）的自然语言查询任务。目前，这种基于大模型的零样本（Zero-shot）推理范式已在视频异常检测\cite{zanella2024harnessing}、视频时序定位\cite{zheng2024training}和视频时刻检索\cite{luo2024zero}等领域取得了显著成功。受此启发，探索如何利用大语言模型的通用知识来实现无需训练（Training-free）的视频摘要技术，具有重要的学术价值和实际应用前景。
 
-为了更加清楚的说明本模板的用法，特意使用了如下几种标记方式来标记「\LaTeX 源码」及「说明」：
+本课题的研究背景正植根于这一技术变革。传统的视频摘要模型如同“领域专家”，虽在特定任务上精通，但灵活性不足；而基于多模态大模型的视频摘要框架则更像是一个“通才”，能够凭借其深厚的语义理解基础，通过自然语言指令直接从原始视频中筛选出符合人类审美的关键片段。这种无需训练的架构具有显著优势：首先，它完全省去了耗时的模型微调过程，降低了算力门槛；其次，它具备极强的跨领域迁移能力，能够适应不同风格的视频内容；最后，它支持以语言驱动的交互方式，使得摘要的生成过程更加直观和可解释。在实际应用场景中，如新闻资讯自动生成、安防监控长视频快速回溯、个人云盘视频智能管理等领域，这种高效、低成本且插拔式的视频摘要技术将极具竞争力。因此，开发一种能够充分利用多模态大模型语义对齐能力的训练无关型视频摘要网络（TFVSN），不仅是响应工业界降本增效的需求，更是推动视频智能理解向通用化、交互化方向演进的关键一步。
 
-\clist{行内的灰色字块}表示简短的代码（\LaTeX 或 shell）；
+\xsection{国内外研究现状分析}{Related Works}
 
-\clist[columbiablue]{行内的蓝色字块}表示宏包的名称。
+视频摘要（Video Summarization）旨在通过提取视频中最具代表性的帧或片段，生成能够覆盖原始视频核心语义的紧凑表达。随着深度学习技术的发展，该领域经历了从基于手工特征的方法、到深度序列建模方法，再到当前由大语言模型驱动的多模态推理范式的演进。本节将围绕传统视频摘要方法、大语言模型在视频任务中的应用，以及无须训练（Training-Free）的视频分析框架三个方面展开综述。
 
-\begin{tcolorbox}
-  灰色框用来放置有一定长度的 \LaTeX 源码（及执行结果）
-\end{tcolorbox}
+\xsubsection{视频摘要方法研究现状}{Current Status of Video Summarization Methods}
+根据是否依赖人工标注数据，视频摘要方法通常分为监督学习与无监督学习两大类。早期的监督学习方法主要基于循环神经网络（RNN）及其变体长短期记忆网络（LSTM）\cite{graves2012long}。由于视频数据天然具有时间序列特性，RNN能够有效建模帧间的时序依赖关系，因此成为初期视频摘要模型的核心架构。Zhang等人
+\cite{zhang2016video} 首次将LSTM与行列式点过程（DPP）\cite{kulesza2012determinantal}结合，在建模时间相关性的同时显式约束摘要的多样性。随后，研究者进一步探索更复杂的时序建模方式，例如通过层级化结构捕捉多尺度时间依赖
+\cite{zhao2017hierarchical}，以及通过结构自适应机制增强模型对不同视频内容的泛化能力
+\cite{zhao2018hsa}。
 
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  红色框用来放置学校的学位论文模板的\textbf{格式}要求
-\end{tcolorbox}
+然而，随着视频长度和语义复杂度的增加，RNN在建模长距离依赖时的局限性逐渐显现。尽管LSTM在一定程度上缓解了梯度消失问题，但其全局建模能力仍然受限。为此，注意力机制被引入视频摘要任务，通过显式建模关键帧的重要性权重来增强语义表达能力
+\cite{lebron2018video,ji2020deep,fajtl2019summarizing,li2021exploring}。在此基础上，一部分工作将视频摘要建模为序列到序列（Seq2Seq）问题，利用编码器-解码器结构生成摘要序列
+\cite{ji2019video,rochan2018video,lal2019online}，从而提升模型在复杂场景下的表达能力。
 
-\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black]
-  蓝色框用来放置学校的学位论文模板的\textbf{内容}要求
-\end{tcolorbox}
+随着Transformer架构 \cite{vaswani2017attention}
+在自然语言处理领域取得突破，其基于自注意力机制的全局建模能力也被广泛引入视频摘要任务中。相比RNN的递归结构，Transformer可以直接建模任意两帧之间的依赖关系，从而更适合处理长视频序列。近期研究不仅利用堆叠的自注意力层进行时间建模
+\cite{argaw2024scaling,chen2022video,lin2023videoxum}，还进一步拓展至空间与时空联合建模，通过引入空间结构信息提升表示能力
+\cite{liang2022video,liu2022video,hsu2023video,son2024csta}。与此同时，为缓解Transformer计算复杂度高的问题，研究者提出了稀疏注意力、局部窗口机制以及改进位置编码等优化策略，在性能与效率之间取得平衡。
 
-\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black,title=绪论部分的要求]
-  绪论部分主要论述论文的选题意义及应用背景、国内外研究现状分析及论文的主要研究内容等。
-\end{tcolorbox}
+相较于依赖大量标注数据的监督方法，无监督视频摘要旨在在无人工标注的条件下学习关键帧选择策略。该类方法的核心思想在于：一个优质摘要应能够在压缩信息的同时重建原始视频的主要内容。基于这一思想，重构驱动的生成式模型成为主流方向，典型方法包括结合变分自编码器（VAE）\cite{kingma2013auto}与生成对抗网络（GAN）\cite{goodfellow2014generative}的统一框架
+\cite{mahasseni2017unsupervised,apostolidis2019stepwise}。这些方法通常利用VAE建模潜在分布，同时通过对抗训练增强摘要的代表性与多样性。进一步的研究引入注意力机制以强化依赖建模，例如通过自注意力捕捉全局与局部关系
+\cite{jung2020global}，或通过多模态融合减少视觉与语义之间的差距 \cite{lin2022deep}。尽管无监督方法降低了对标注数据的依赖，但其性能往往依赖于复杂的训练过程，且在跨领域场景中的泛化能力仍然有限。
 
-\clearpage
+\xsubsection{大语言模型在视频任务中的应用研究}{Research on the Application of Large Language Models in Video Tasks}
+近年来，大语言模型（LLM）如GPT-4 \cite{achiam2023gpt}、LLaMA
+\cite{touvron2023llama} 以及Qwen2 \cite{yang2024qwen2}
+的出现，为视频理解任务提供了强大的语义建模能力。在此基础上，多模态大语言模型（MLLM）通过将视觉信息映射到语言语义空间，实现了跨模态的统一表示，推动了视频理解研究的发展。
 
-\xsection{基本功能}{Basic Functions}
+在通用视频理解与对话系统方面，VideoChat \cite{li2023videochat} 通过引入可学习的神经接口，将视频编码器与LLM进行耦合，实现了以对话为中心的视频理解框架，能够完成时空推理与事件定位等复杂任务。针对长视频带来的上下文限制问题，MA-LLM
+\cite{he2024ma} 提出基于外部记忆库的增强架构，通过存储历史帧特征实现长期依赖建模，同时避免上下文窗口溢出。MovieChat
+\cite{song2024moviechat} 则借鉴认知心理学中的记忆模型，引入稀疏记忆机制，将Transformer
+token视为记忆单元，从而在保证效率的同时实现长时序推理。这类方法体现了当前研究从“短视频理解”向“长视频推理”的重要转变。
 
-\xsubsection{文档层级}{Level of this document}
+在视频异常检测任务中，基于LLM的方法利用其强大的语义推理能力，对异常行为进行建模与解释。Holmes-VAD
+\cite{zhang2024holmes}
+通过大规模指令微调，使模型不仅能够识别异常，还能生成可解释的推理过程。AnomalyGPT
+\cite{gu2024anomalygpt}
+则通过模拟工业数据并结合提示学习，实现了无需人工阈值设定的细粒度异常检测。此外，相关研究还将LLM应用于语义异常检测，通过建模系统层面的语义偏差来识别复杂异常
+\cite{elhafsi2023semantic}。
 
-按照要求，正文最多应具有七个层级。其中，为了方便中英目录的生成，模板重新定义了前三级标题的命令，并新增了第六级的命令。注意，不论正文主体语言是否为英文，标题顺序均为先中后英（前三级）。
+在时序定位（Temporal Grounding）任务中，LLM同样展现出强大的能力。ChatVTG
+\cite{qu2024chatvtg}
+利用LLM生成多粒度视频片段描述，并通过语义匹配实现零样本定位，随后通过精细化步骤提升定位精度。VTimeLLM
+\cite{huang2024vtimellm}
+则提出三阶段训练策略，包括跨模态特征对齐、时间边界学习以及指令微调，从而实现对视频关键时刻的精准捕捉。这些研究表明，LLM正在将视频分析从传统的特征匹配问题，转变为基于语义理解与逻辑推理的高级认知任务。
 
-\begin{table}[H]
-  \begin{tblr}{
-    colspec={X[c]X[c]},
-    verb
-  }
-    \toprule
-      层级 & 命令 \\
-    \midrule
-      0  & \verb|\xchapter{Chs}{Eng}| \\
-      1  & \verb|\xsection{Chs}{Eng}| \\
-      2  & \verb|\xsubsection{Chs}{Eng}| \\
-      3  & \verb|\subsubsection{Chs/Eng}| \\
-      4  & \verb|\paragraph{Chs/Eng}| \\
-      5  & \verb|\subparagraph{Chs/Eng}| \\
-      6  & \verb|\subsubparagraph{Chs/Eng}| \\
-    \bottomrule
-  \end{tblr}
-\end{table}
+\xsubsection{无须训练的视频分析框架研究现状}{Current Status of Research on Training-Free Video Analytics Frameworks}
+尽管基于微调或适配器的方法在性能上表现优越，但其训练成本和计算资源需求较高，限制了实际部署。近年来，无须训练（Training-Free）的视频分析框架逐渐成为研究热点。这类方法通过直接利用预训练的视觉编码器与大语言模型，在不更新模型参数的情况下完成任务，主要依赖提示工程与模块化设计实现跨模态协同。
 
-示例如下：
+在异常检测任务中，LogSAD \cite{zhang2025towards} 提出了“匹配思考”（Match-of-Thought）框架，通过多模态模型捕捉视频中的逻辑规则，并结合多粒度检测与得分校准，实现稳健的零样本异常识别。在时序定位方面，TFVTG
+\cite{zheng2024training}
+利用LLM对查询语句进行语义分解，并将其与视频候选片段进行对齐，同时区分动态与静态事件以提升匹配精度。针对动作检测任务，FreeZAD
+\cite{han2025training}
+引入对比得分机制与动作性校准策略，在无监督条件下实现对未见类别的识别，并通过测试时自适应增强模型的鲁棒性。
 
-\subsubsection{第四级标题$1$}
+总体来看，无须训练方法通过充分挖掘预训练模型的潜在能力，在避免高昂训练成本的同时，展现出良好的泛化性能与灵活性。然而，如何进一步提升其在复杂场景中的稳定性与精细化能力，仍是当前研究的重要方向。本文提出的TFVSN框架正是在这一背景下展开，旨在通过纯语义驱动的方式，实现高效且通用的视频摘要生成。
 
-\paragraph{第五级标题$1$}
+\xsection{论文的主要研究内容}{Main content of the paper}
 
-\paragraph{第五级标题$2$}
 
-\paragraph{第五级标题$3$}
+本文围绕无训练视频摘要任务展开研究，针对当前视频摘要方法对标注数据依赖强、泛化能力受限以及难以充分利用多模态语义信息等问题，提出了一种结合大语言模型与图文对齐机制的无训练视频摘要框架。本文的主要研究内容如下：
 
-\subparagraph{第六级标题$1$}
+1 针对传统视频摘要方法依赖监督学习、需要大量标注数据的问题，本文提出了一种基于大语言模型的滑动窗口评分方法（LLM-based
+Window Scoring）。该方法将视频表示为连续帧序列，并采用固定大小的滑动窗口对视频进行局部划分。在每一个窗口内，通过构建包含视觉信息与时序关系的文本提示，将多帧信息输入大语言模型，从而获得对应帧的重要性评分。为缓解窗口重叠带来的评分冗余问题，本文采用累加与平均策略对多次评分结果进行融合，从而得到稳定的帧级重要性序列。该方法无需模型训练，能够充分利用大语言模型的上下文理解能力，实现对视频内容的局部语义建模。针对仅依赖局部上下文评分难以保证全局语义一致性的问题，本文提出了一种基于图文相似度的评分优化方法（Image-Text
+Similarity Refinement）。该方法首先生成视频的整体文本描述，并分别提取文本特征与视频帧的视觉特征，在统一特征空间中进行对齐。通过将特征划分为多个语义片段，并计算对应片段之间的余弦相似度，从而刻画每一帧与整体语义之间的匹配程度。随后对相似度序列进行归一化处理，以获得更加稳定的评分结果。该方法引入了全局语义约束，有效提升了评分的语义一致性与鲁棒性。在上述两种评分机制的基础上，本文进一步构建了一个双路径融合的无训练视频摘要框架。该框架从局部上下文理解与全局语义对齐两个角度对视频帧重要性进行建模，并通过加权融合策略整合两类评分结果，从而生成最终的重要性序列。相比单一评分方式，该方法能够兼顾局部判别能力与全局一致性，在无需任何标注数据和参数训练的条件下，实现高质量的视频摘要。
 
-\subparagraph{第六级标题$2$}
+2 针对单一模型在复杂视频语义理解中存在表达能力有限、难以进行多角度推理的问题，本文进一步提出了一种基于多智能体协同机制的视频摘要方法（Multi-Agent
+Video Summarization Framework）。该方法引入多个具有不同功能的大语言模型智能体，通过任务分解与协同推理的方式，对视频内容进行多层次分析与决策。
+具体而言，本文构建了由多个功能性智能体组成的协同系统，包括视觉理解智能体、语义摘要智能体以及重要性评估智能体。其中，视觉理解智能体负责对视频帧或片段进行描述与语义提取；语义摘要智能体基于全局视角生成视频的整体叙事结构；重要性评估智能体则结合局部信息与全局语义，对各个片段进行重要性打分。在此基础上，通过设计统一的通信协议与提示模板，实现各智能体之间的信息交互与结果共享。
+此外，为提高系统的稳定性与一致性，本文引入基于迭代反馈的协同优化机制。各智能体在初始推理结果的基础上，通过多轮交互不断修正与完善中间结果，从而减少单次推理带来的偏差问题。同时，在决策阶段采用投票或加权融合策略，对多个智能体的输出进行整合，以获得更加鲁棒的视频摘要结果。
+该方法充分利用多智能体系统在复杂任务分解与协同推理方面的优势，使视频摘要过程从“单模型决策”转变为“多主体协同决策”，在无需额外标注数据的前提下，提高了对复杂场景和长视频内容的理解能力与摘要质量。
 
-\subparagraph{第六级标题$3$}
+综上所述，本文方法在无需监督数据的前提下，充分挖掘大语言模型与多模态特征对齐的潜力，在视频摘要任务中取得了良好的表现，并为无训练视频理解方法提供了一种新的研究思路。
 
-第六级下的一些文字
+\xsection{论文的组织架构}{The organizational structure of the paper}
 
-\subsubparagraph{第七级标题$1$}
+本文共分为五个章节，围绕无训练视频摘要方法与多智能体协同视频理解展开，具体安排如下：
 
-第七级下的一些文字
+第一章：绪论。首先介绍视频摘要任务的研究背景与意义，分析当前视频内容快速增长所带来的信息冗余问题。随后对视频摘要领域的国内外研究现状进行综述，重点分析监督学习方法与无监督方法的优缺点，并指出现有方法在数据依赖性、多模态理解能力等方面的不足。最后对本文的研究内容、技术路线以及整体结构安排进行概述。
 
-\clearpage
+第二章：视频摘要相关理论与关键技术。首先对视频摘要的基本问题建模进行介绍，包括帧级建模与片段级建模方式。随后对主流视频摘要方法进行分析，包括基于监督学习的方法、无监督方法以及近年来基于多模态模型的方法。同时，介绍本文所涉及的关键技术，如大语言模型的推理机制、多模态特征对齐方法以及图文相似度计算方法。最后对视频摘要常用评价指标进行说明，包括F1-score等指标的定义与计算方式。
 
-\xsubsection{加粗，斜体与其他字体设置}{Bold, Emph and Other Font Settings}
+第三章：基于大语言模型的无训练视频摘要方法研究。首先分析传统方法在数据依赖与泛化能力方面的不足，并在此基础上提出本文的无训练视频摘要框架。随后详细介绍基于滑动窗口的大语言模型评分机制，包括提示构建方式与窗口融合策略；进一步阐述图文相似度驱动的评分优化方法，包括特征提取、分段对齐与相似度计算过程。最后通过对比实验与消融实验验证所提出方法的有效性，并对实验结果进行分析与总结。
 
-在中文学位论文的写作中，不推荐使用加粗，斜体等方式突出重点。
+第四章：基于多智能体协同机制的视频摘要方法研究。首先阐述复杂视频场景下单一模型存在的局限性，并以此为动机提出多智能体视频摘要框架。随后详细介绍系统中各类智能体的功能划分与协同机制，包括视觉理解智能体、语义生成智能体与重要性评估智能体等；同时说明多智能体之间的信息交互方式与迭代优化策略。接着给出具体实验设置与结果分析，通过对比实验与消融实验验证多智能体方法在视频摘要任务中的有效性与鲁棒性，最后对本章内容进行总结。
 
-使用\clist{\textbf{text}}进行可以对字加粗；同时，请注意到在英文中，正确的强调方式不是使用加粗，而是使用斜体，即使用\clist{\emph{text}}进行强调。如：
-\begin{texcode}[]{}
-  为了突出\textbf{重点}，英文可以这样：This is the \emph{key question}.
-\end{texcode}
-
-使用\clist{\textit{text}}、\clist{\underline{text}}等实现斜体，下划线等格式。
-
-
-
-
-
-\xsubsection{脚注及其使用}{Footnotes}
-
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  脚注可用小号字（一般小五号宋体）列在相应正文同一页最下部并与正文部分用细线（版面宽度的1/4长）隔开。
-\end{tcolorbox}
-
-脚注\footnote{脚注序号“\ding{172}，……，\ding{180}”的字体是“正文”，不是“上标”，序号与脚注内容文字之间空$1$个半角字符，脚注的段落格式为：单倍行距，段前空$0$磅，段后空$0$磅，悬挂缩进$1.5$字符；中文用宋体，字号为小五号，英文和数字用Times New Roman字体，字号为$9$磅；中英文混排时，所有标点符号（例如逗号“，”、括号“（）”等）一律使用中文输入状态下的标点符号，但小数点采用英文状态下的样式“.”。}\footnote{脚注序号“\ding{172}，……，\ding{180}”的字体是“正文”，不是“上标”，序号与脚注内容文字之间空$1$个半角字符，脚注的段落格式为：单倍行距，段前空$0$磅，段后空$0$磅，悬挂缩进$1.5$字符；中文用宋体，字号为小五号，英文和数字用Times New Roman字体，字号为$9$磅；中英文混排时，所有标点符号（例如逗号“，”、括号“（）”等）一律使用中文输入状态下的标点符号，但小数点采用英文状态下的样式“.”。}\footnote{脚注序号“\ding{172}，……，\ding{180}”的字体是“正文”，不是“上标”，序号与脚注内容文字之间空$1$个半角字符，脚注的段落格式为：单倍行距，段前空$0$磅，段后空$0$磅，悬挂缩进$1.5$字符；中文用宋体，字号为小五号，英文和数字用Times New Roman字体，字号为$9$磅；中英文混排时，所有标点符号（例如逗号“，”、括号“（）”等）一律使用中文输入状态下的标点符号，但小数点采用英文状态下的样式“.”。}是对文中有关内容的解释、说明或补充，使用上角标（序号\ding{172}、\ding{173}、$\cdots$）进行标注。
-
-脚注可以通过 \clist{\footnote{}}自动编号生成，也可使用\clist{\footnotetex{text}}手动添加脚注。
-
-摘要中关于项目资助的标识，是使用脚注生成的：
-
-\begin{tcolorbox}
-  \lstinline|\footnotetext{*本研究得到某某基金（编号：）的资助}|
-\end{tcolorbox}
-
-
-\clearpage
-
-\xsection{数字、公式和定理环境}{Equation and Theorem}
-
-\xsubsection{数字与单位}{Numbers and Units}
-
-模板引入了\clist[columbiablue]{siunitx}宏包实现数字与单位的正确排版，具体使用细节请自行查看该宏包，即 \clist{texdoc siunitx}。
-
-为了输入不同格式及角度的数字，可以使用\clist{\num{3.45d-4}}得到\num{3.45d-4}，使用\clist{\num{-e10}}得到\num{-e10}，使用\clist{\ang{1;2;3}}得到\ang{1;2;3}，避免了手动调节格式的问题。
-
-该宏包预先定义了部分单位，可以直接调用，同时生成较为复杂的单位。如：
-
-使用\clist{\SI{10}{\hertz}}得到 \SI{10}{\hertz}。
-
-\xsubsection{公式、矩阵与数学符号}{Equations, Matrix and Mathematical Symbols}
-
-
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 公式应另起一行，居中编排，较长的公式尽可能在等号后换行，或者在“+”、“-”等符号后换行。公式中分数线的横线，长短要分清，主要的横线应与等号取平。
-    \item 公式后应注明编号，公式号应置于小括号中，如公式（2-3）。写在右边行末，中间不加虚线；
-    \item 公式下面的“式中：”两字左起顶格编排，后接符号及其解释；解释顺序为先左后右，先上后下；解释与解释之间用“；”隔开。
-    \item 公式中各物理量及量纲均按国际标准（SI）及国家规定的法定符号和法定计量单位标注，禁止使用已废弃的符号和计量单位。
-  \end{enumerate}
-\end{tcolorbox}
-
-此部分是 \LaTeX 中比较有趣的一部分，具体的使用细节请自行查阅资料。
-
-\begin{texcode}[]{}
-  公式如下：
-  \begin{equation}
-      -e^{\max}_\text{dis} \leq a_t \leq e^{\max}_\text{ch}\label{equation:c1:mdl:cstr_dis}
-  \end{equation}
-  式中：$e$为xxx；$a$为xxx。
-\end{texcode}
-
-所以如\cref{equation:c1:mdl:cstr_dis}所示：
-\begin{equation}\label{equation:c1:exp}
-    -e^{\max}_\text{dis} \leq a_t \leq e^{\max}_\text{ch}
-\end{equation}
-
-其中，数学公式可以使用\clist{\boldmath..\unboldmath}对整体进行加粗：
-
-\begin{texcode}[]{}
-\boldmath
-\begin{equation}
-  \biggl(\int_{-\infty}^\infty e^{-x^2}\diff x\biggr)^2 
-\end{equation}
-\unboldmath
-\end{texcode}
-
-如果只需对某个元素调整，可以通过\clist{\boldsymbol}，或使用\clist[columbiablue]{unicode-math}提供的，以\clist{\sym}开始的命令族，如\clist{\symup, \symbfup, \symit, \symbfit}：
-\begin{texcode}[]{}
-  \begin{equation}
-    \biggl(\int_{-\infty}^\infty \symbfit{e}^{-\symup{x}^2}\diff \symbfup{x}\biggr)^2 
-  \end{equation}
-\end{texcode}
-不建议再使用标准 \LaTeX 及 amsmath 扩展提供的 \clist{\mathbf}、\clist{\mathcal} 等输入不同样式的字母，可能会导致使用文本字体而非数学字体(的粗体形式)。
-
-请注意，本模板已经定义了\clist{\diff}命令作为微分符号，请不要自己使用新的符号，使用效果如下：
-\begin{align}\label{equation:c1:diff}
-  \biggl(\int_{-\infty}^\infty e^{-x^2}\diff x\biggr)^2 
-    &= \int_{-\infty}^\infty\int_{-\infty}^\infty e^{-(x^2+y^2)}\diff x\diff y \\
-    &= \int_0^{2\pi}\int_0^\infty e^{-r^2}r\diff r\diff\theta \\
-    &= \int_0^{2\pi}\biggl(-\frac{e^{-r^2}}{2}\bigg\vert_{r=0}^{r=\infty}\,\biggr)\diff\theta \\
-    &= \pi
-\end{align}
-
-
-同时，定义了部分用于简化输入的命令：
-
-\begin{texcode}[sidebyside]{}
-  $\seq{x}{n}$ \\ % serise
-  $\iprod{i}{j}$ \\ % inner product
-  $\mbs{B}$  % \boldsymbol
-\end{texcode}
-
-\xsubsection{定理相关}{Theorems}\label{section:Environments for math}
-
-本模板通过\clist[columbiablue]{thmtools}宏包定义了以下环境，其中\textbf{证明}环境默认具有缩进，没有编号，同时使用\clist{\qedhere}结束证明，其他环境样式一致。
-
-\begin{table}[H]
-  \begin{tblr}{
-    colspec={*{6}{X[c]}},
-    vline{4},
-  }
-  \toprule
-    环境 & 英文名称 & 中文名称 & 环境 & 英文名称 & 中文名称 \\
-  \midrule
-    proof & Proof & 证明 & theorem & Theorem & 定理 \\
-    axiom & Axiom & 公理 & corollary & Corollary & 推论 \\
-    lemma & Lemma & 引理 & definition & Definition & 定义 \\
-    example & Example & 例子 & proposition & Proposition & 命题 \\
-    assumption & Assumption & 假设 & remark & Remark & 注 \\
-    problem & Problem & 问题 & conjecture & Conjecture & 猜想 \\
-  \bottomrule
-  \end{tblr}
-\end{table}
-
-
-\begin{texcode}[]{}
-  \begin{theorem}[勾股定理]\label{theorem:pt}
-    若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$
-  \end{theorem}
-
-  \begin{proof}
-    通过\ldots
-
-    所以：
-    \begin{equation*}
-        G(x, y) = G(y, x).  \qedhere
-    \end{equation*}
-  \end{proof}
-\end{texcode}
-
-\begin{proposition}
-  所以：
-  \begin{equation*}
-      G(x, y) = G(y, x).
-  \end{equation*}
-\end{proposition}
-
-\begin{conjecture}[勾股定理]
-    若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$
-\end{conjecture}
-
-\begin{axiom}[勾股定理]
-    若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$ 若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$ 若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$
-\end{axiom}
-
-\begin{definition}[勾股定理]
-    若 $a,b$ 为直角三角形的两条直角边，$c$ 为斜边，那么 $a^2 + b^2 + c^2.$
-\end{definition}
-
-\xsection{其他环境}{Other Environments}
-
-\xsubsection{枚举环境}{Enumerates}
-
-\begin{texcode}[]{}
-  \begin{enumerate}
-    \item 123
-    \item 231421
-    \item 124124
-  \end{enumerate}
-\end{texcode}
-
-
-\xsection{正文}{Text}
-
-\zhlipsum[1]
-
-\xsubsection{正文}{Text}
-
-\zhlipsum[2]
-
-\xsubsection{正文}{Text}
-
-\zhlipsum[3]
+第五章：结论与展望。对本文提出的无训练视频摘要方法与多智能体协同框架进行总结，归纳其主要贡献与优势。同时分析当前方法存在的不足，如计算开销与推理效率问题，并对未来研究方向进行展望，包括更高效的多模态建模方法与更智能的多智能体协同机制。
