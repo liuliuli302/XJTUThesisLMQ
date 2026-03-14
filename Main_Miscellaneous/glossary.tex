@@ -1,25 +1,42 @@
-% 如果论文中使用了大量的物理量符号、标志、缩略词、专门计量单位、自定义名词和术语等，应将全文中常用的这些符号及意义列出。如果上述符号和缩略词使用数量不多，可以不设专门的主要符号表，但在论文中出现时须加以说明。
-% 论文中主要符号应全部采用法定单位，特别要严格执行GB3100～3102—93有关“量和单位”的规定。单位名称的书写，可以采用国际通用符号，也可以用中文名称，但全文应统一，不得两种混用。
-% 缩略词应列出中英文全称。
+% 主要符号
+\newglossaryentry{video_sequence}{name={\ensuremath{\mathcal{V}}},description={输入视频帧序列},sort={V}}
+\newglossaryentry{frame_symbol}{name={\ensuremath{f_t}},description={第 \ensuremath{t} 帧视频帧},sort={f_t}}
+\newglossaryentry{total_frames}{name={\ensuremath{T}},description={视频总帧数},sort={T}}
+\newglossaryentry{segment_set}{name={\ensuremath{\mathcal{S}}},description={视频片段集合},sort={S}}
+\newglossaryentry{segment_symbol}{name={\ensuremath{S_k}},description={第 \ensuremath{k} 个时间片段或推理单元},sort={S_k}}
+\newglossaryentry{segment_count}{name={\ensuremath{N}},description={视频划分后的片段数量},sort={N}}
+\newglossaryentry{segment_begin}{name={\ensuremath{b_k}},description={第 \ensuremath{k} 个片段的起始帧索引},sort={b_k}}
+\newglossaryentry{segment_end}{name={\ensuremath{e_k}},description={第 \ensuremath{k} 个片段的结束帧索引},sort={e_k}}
+\newglossaryentry{caption_pick_set}{name={\ensuremath{\mathcal{P}_k}},description={第 \ensuremath{k} 个片段内用于描述生成的采样帧索引集合},sort={P_k}}
+\newglossaryentry{segment_caption}{name={\ensuremath{c_k}},description={第 \ensuremath{k} 个片段的文本描述},sort={c_k}}
+\newglossaryentry{caption_sequence}{name={\ensuremath{\mathcal{C}}},description={按时间顺序组织的段级描述序列},sort={C}}
+\newglossaryentry{planner_plan}{name={\ensuremath{\mathcal{P}}},description={Planner 生成的视频级规划结果},sort={P}}
+\newglossaryentry{video_theme}{name={\ensuremath{z}},description={视频主题或视频类型标签},sort={z}}
+\newglossaryentry{global_summary}{name={\ensuremath{g}},description={视频全局摘要},sort={g}}
+\newglossaryentry{expert_weights}{name={\ensuremath{\mathbf{w}}},description={多专家权重向量},sort={w}}
+\newglossaryentry{planner_score}{name={\ensuremath{p_k}},description={Planner 对第 \ensuremath{k} 个片段给出的重要性分数},sort={p_k}}
+\newglossaryentry{expert_score}{name={\ensuremath{e_k^{(m)}}},description={第 \ensuremath{m} 类专家对第 \ensuremath{k} 个片段给出的维度化分数},sort={e_k_m}}
+\newglossaryentry{segment_final_score}{name={\ensuremath{\hat{y}_k}},description={第 \ensuremath{k} 个片段的最终重要性分数},sort={yhat_k}}
+\newglossaryentry{memory_context}{name={\ensuremath{\mathcal{M}_k}},description={第 \ensuremath{k} 个片段评分时使用的历史文本上下文},sort={M_k}}
+\newglossaryentry{cover_segments}{name={\ensuremath{\Omega_t}},description={覆盖第 \ensuremath{t} 帧的片段集合},sort={Omega_t}}
+\newglossaryentry{dense_frame_score}{name={\ensuremath{s_t}},description={完整帧轴上的稠密帧级重要性分数},sort={s_t}}
+\newglossaryentry{sampled_frame_score}{name={\ensuremath{r_t}},description={映射到评测采样位置上的帧级重要性分数},sort={r_t}}
+\newglossaryentry{pick_set}{name={\ensuremath{\mathcal{Q}}},description={数据集评测协议中的采样帧位置集合},sort={Q}}
+\newglossaryentry{binary_summary}{name={\ensuremath{\mathbf{y}}},description={最终生成的二值摘要向量},sort={y}}
+\newglossaryentry{summary_ratio}{name={\ensuremath{\sigma}},description={摘要长度约束比例},sort={sigma}}
+\newglossaryentry{f1_metric}{name={\ensuremath{F_1}},description={摘要重叠性评估指标 F1 值},sort={F1}}
+\newglossaryentry{spearman_metric}{name={\ensuremath{\rho}},description={Spearman 秩相关系数},sort={rho}}
+\newglossaryentry{kendall_metric}{name={\ensuremath{\tau}},description={Kendall 秩相关系数},sort={tau}}
 
-% 注意 专有名词默认会将 希腊字母排在拉丁字母前，此处需要手动指定 `sort={}` 确保排序正确
-
-\newglossaryentry{灌水器流量偏差系数}{name={\ensuremath{C_v}},description={灌水器流量偏差系数},}
-\newacronym[description=计算机科学]{cs}{CS}{Computer Science}
-\newacronym[description=逻辑卷管理器]{lvm}{LVM}{Logical Volume Manager}
-\newglossaryentry{Linux}{
-name=Linux,
-description={is a generic term referring to the family of Unix-like
-computer operating systems that use the Linux kernel},
-plural=Linuces,
-}
-\newglossaryentry{管道内径}{name={\ensuremath{D}},description={管道内径/mm},sort={D}}
-\newglossaryentry{灌水器流道当量直径}{name={\ensuremath{D_e}},description={灌水器流道当量直径/mm},sort={D_e}}
-\newglossaryentry{管长}{name={\ensuremath{l}},description={管长/m},sort={l}}
-\newglossaryentry{迷宫流道单元个数}{name={\ensuremath{n}},description={迷宫流道单元个数/个},sort={n}}
-\newglossaryentry{灌水器流量}{name={\ensuremath{q}},description={灌水器流量/L·h-1},sort={q}}
-\newglossaryentry{灌水器额定流量}{name={\ensuremath{q_n}},description={灌水器额定流量/L·h-1},sort={q_n}}
-\newglossaryentry{雷诺数}{name={\ensuremath{Re}},description={雷诺数},sort={Re}}
-\newglossaryentry{灌水器流量标准偏差}{name={\ensuremath{S_q}},description={灌水器流量标准偏差},sort={s_q}}
-\newglossaryentry{流体的运动粘性系数}{name={\ensuremath{v}},description={流体的运动粘性系数},sort={v}}
-\newglossaryentry{流态指数}{name={\ensuremath{X}},description={流态指数},sort={X}}
+% 常用缩略词
+\newacronym[description=大语言模型]{llm}{LLM}{Large Language Model}
+\newacronym[description=视觉语言模型]{vlm}{VLM}{Vision-Language Model}
+\newacronym[description=核时间分割算法]{kts}{KTS}{Kernel Temporal Segmentation}
+\newacronym[description=应用程序编程接口]{api}{API}{Application Programming Interface}
+\newacronym[description=命令行接口]{cli}{CLI}{Command Line Interface}
+\newacronym[description=每秒帧数]{fps}{FPS}{Frames Per Second}
+\newacronym[description=层级数据格式第五版]{hdfive}{HDF5}{Hierarchical Data Format 5}
+\newacronym[description=图形处理器]{gpu}{GPU}{Graphics Processing Unit}
+\newacronym[description=JavaScript 对象表示法]{json}{JSON}{JavaScript Object Notation}
+\newacronym[description=视频摘要数据集 SumMe]{summe}{SumMe}{SumMe Dataset}
+\newacronym[description=视频摘要数据集 TVSum]{tvsum}{TVSum}{TVSum Dataset}

@@ -1,69 +1,677 @@
 % !TeX root = ../main.tex
 
-\xchapter{参考文献与交叉引用}{Crossreferences}
+\xchapter{面向视频摘要的多智能体大语言模型推理框架}{Multi-agent large language model inference framework for video summarization}
 
-注意，当引用时出现 [?] 时，可能有有多种原因造成，首先请确定是否使用了 biber 编译模板，再请注意查看辅助文件是否正常生成，此种问题大部分情况是使用不当而非模板设置造成的。
+\xsection{问题提出}{Problem Statement}
 
-\xsection{基于 Label 的引用}{Ref labels}
+现有视频摘要方法在长视频场景下面临一个更加工程化且更具开放性的挑战：摘要生成不仅需要识别视觉上的显著片段，还需要在全局主题、叙事推进、情绪变化与信息密度之间取得平衡。对于结构复杂、内容跨度较大的开放域视频而言，单一评分器往往难以同时兼顾这些维度。特别是在免训练（Training-Free）设定下，模型无法通过大规模监督数据显式学习不同视频类型中的“重要性”定义，因此如何在不依赖额外训练的前提下构建可解释、可扩展且适应多类型视频的摘要框架，成为本章关注的核心问题。
 
-% \xsubsection{引用公式}{Ref equations}
+与第三章侧重于层级化语义抽象不同，本章研究的问题更加贴近当前工程实现中的推理链路。根据项目当前主执行流程，输入视频首先被划分为若干时间片段，对每个片段抽取代表帧并生成段级文本描述；随后，系统并不直接依赖单个大模型对全部片段进行统一排序，而是引入一个具有“全局规划 + 多专家协同”特征的智能体推理机制：Planner Agent 从全部片段描述中推断视频主题、生成全局摘要并分配专家权重，之后由多个 Expert Agent 分别从叙事推进、视觉显著性、情绪表达和信息增益等不同角度对当前片段的重要性进行判断；最后，再将段级得分映射回原始采样帧序列，并在标准视频摘要评测协议下构造最终摘要。这一流程对应了当前系统中从分段、描述、规划、打分到帧级回填与评测的完整闭环。
 
-% 引用公式使用 \clist{\eqref{label}} 命令，将引用公式的编号（带括号）：
+从方法建模的角度看，该问题可以表述为一个“段级协同评分驱动的帧级摘要生成”问题。设输入视频记为 $\mathcal{V}= \{f_{1}, f_{2}, \dots, f_{T}\}$，其中 $f_t$ 表示第 $t$ 帧，$T$ 为视频总帧数。系统首先依据给定的分段策略将视频划分为 $N$ 个连续片段：
 
-% \begin{texcode}[]{}
-%   如式 \eqref{eqn:c1:diff} 所示
-% \end{texcode}
+\begin{equation}
+	\mathcal{S}= \{S_{1}, S_{2}, \dots, S_{N}\}, \quad S_{k}= \left[b_{k}, e_{k}\right]
+\end{equation}
 
-% \xsubsection{引用其他内容}{Ref other labels}
+其中 $b_k$ 与 $e_k$ 分别表示第 $k$ 个片段的起始帧与结束帧索引。在当前实现中，分段方式可以是按固定段数切分，也可以是固定帧窗口或滑动窗口切分，因此本章更适合采用统一的 Segment 表述，而非将其直接等同于传统意义上的镜头（Shot）或场景（Scene）。
 
-基于 \clist{\label{}} 编号的引用，可以通过 \clist[columbiablue]{cleveref} 提供的 \clist{\cref} 实现，它可以通过识别 label 的类型，自动为引用添加前缀。具体的使用方法可以查看该宏包的文档。
+为了降低长视频直接推理带来的上下文负担，系统不对全部帧逐一建模，而是对每个片段 $S_k$ 选取一个采样帧索引集合 $\mathcal{P}_k$，并通过视觉语言模型生成片段级描述：
 
-应当这样使用 \clist{\label{TYPE:NAME}}，其中 TYPE 指此标签的类型，应当使用模板提供的或自行指定；NAME 为此标签的名称，可以自行定义，不应当重复。模板为所有举例过的环境预设了类型，其中在\cref{section:Environments for math}中预设了 $12$种数学环境，则其 TYPE 与该环境的「环境」列保持一致，其余类型的定义见下：
+\begin{equation}
+	c_{k}= \Phi_{\mathrm{cap}}(\{f_{p} \mid p \in \mathcal{P}_{k}\})
+\end{equation}
 
-\begin{texcode}[]{}
-  如\cref{equation:c1:diff} 所示 \\
-  如\crefrange{equation:c1:exp}{equation:c1:diff} 所示 \\
-  如\cref{equation:c1:diff,equation:c1:exp,equation:c1:mdl:cstr_dis} 所示 \\
-  如\cref{figure:icon} 所示，如\cref{subfigure:icon} 所示 \\
-  如\cref{table:methodcompare} 所示 \\
-  如\cref{algorithm:SOH} 所示 \\
-  如\cref{listing:a_label} 所示 \\
-  如\cref{theorem:pt} 所示
-\end{texcode}
+其中 $c_k$ 表示第 $k$ 个片段的文本描述，$\Phi_{\mathrm{cap}}(\cdot)$ 表示段级描述生成函数。所有片段描述构成视频的文本化时序表示 $\mathcal{C}= \{c_1, c_2, \dots, c_N\}$。这一表示并不是第三章中的层级化 Caption 金字塔，而是为了适配当前多智能体推理流程而构造的段级语义输入，其主要作用是把原始视频压缩为可由 Planner 与 Expert Agent 统一处理的中间表征。
 
-模板只对数学公式设置了多种引用时的样式，并未对其他类型设置，如果有使用的需要，请自行查看手册与模板文件模仿修改。
+在获得段级描述序列后，本章关注的第二个关键问题是：如何在没有监督训练的情况下，对不同类型视频中的片段重要性进行稳定判断。当前系统采用的做法是，先由 Planner Agent 根据全部片段描述生成全局规划结果：
 
-\xsection{参考文献}{References}
+\begin{equation}
+	\mathcal{P}= \{z, g, \mathbf{w}\}
+\end{equation}
 
-\begin{tcolorbox}[colback=red!5!white,colframe=red!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 参考文献的著录格式应符合国家标准GB/T 7714-2015《文后参考文献著录规则》。参考文献中每条项目应齐全。
-    \item 参考文献里面标点符号：英文文献用半角,中文文献用全角。
-  \end{enumerate}
-\end{tcolorbox}
+其中 $z$ 表示视频主题，$g$ 表示视频全局摘要，$\mathbf{w}= [w_{s}, w_{v}, w_{e}, w_{i}]$ 表示四类专家的权重，分别对应叙事（story）、视觉（visual）、情绪（emotion）和信息（information）四个维度。随后，对于第 $k$ 个片段，Planner Agent 给出其全局重要性分数 $p_k$，各 Expert Agent 分别给出维度化分数 $e_{k}^{(s)}$、$e_{k}^{(v)}$、$e_{k}^{(e)}$ 与 $e_{k}^{(i)}$。若记第 $k$ 个片段对应的历史上下文记忆为 $\mathcal{M}_k$，则最终段级分数可以表示为：
 
-\begin{tcolorbox}[colback=blue!5!white,colframe=blue!75!black]
-  \begin{enumerate}[leftmargin=0.5cm]
-    \item 文后著录的参考文献务必实事求是。论文中引用过的文献必须著录，未引用的文献不得出现。应遵循学术道德规范，避免涉嫌抄袭、剽窃等学术不端行为。
-    \item 参考文献一般应是作者亲自考察过的对学位论文有参考价值的文献，除特殊情况外，一般不应间接引用。
-    \item 参考文献应有权威性，要注意引用最新的文献。
-    \item 参考文献的数量：
-    博士学位论文，一般应在80篇以上，其中，期刊文献60篇以上，国外文献30篇以上，均以近5年的文献为主。
-    硕士学位论文，一般应在30篇以上，其中，期刊文献不少于20篇，国外文献不少于10篇，均以近5年的文献为主。
-  \end{enumerate}
-\end{tcolorbox}
+\begin{equation}
+	\hat{y}_{k}= p_{k}+ w_{s}e_{k}^{(s)}+ w_{v}e_{k}^{(v)}+ w_{e}e_{k}^{(e)}+ w_{i}e_{k}^{(i)}
+\end{equation}
 
-模板使用 biblatex 编译参考文献，默认采用顺序编码制，有多种引用参考文献的方式，请自行查阅 biblatex-gbt-7715-2015 宏包，即 \clist{texdoc biblatex-gbt-7714-2015}。
+这一形式揭示了本章方法与传统单评分器方法的本质区别：片段的重要性不再被视为一个单源判断结果，而是由全局规划与多维专家证据共同决定。进一步地，由于连续片段之间往往存在叙事承接与语义冗余关系，系统还引入了轻量级记忆机制，用于将前序片段描述以文本上下文的形式注入到后续片段评分过程中，从而提升时序一致性并减弱局部误判的影响。
 
-在导言区使用\clist{\addbibresource{path/to/.bib file}}添加参考文献数据库，默认参考文献数据库位于 ./References/ 下。
+然而，段级得分本身还不能直接满足标准视频摘要评测的需求。公开数据集通常要求在原始采样帧序列上给出帧级分数或二值摘要，因此本章研究的第三个问题是：如何将段级协同推理结果转换为可评测的帧级摘要表示。设第 $t$ 帧对应的帧级重要性为 $r_t$，则在最基本的非重叠分段情形下，可将所属片段的最终分数直接赋给该帧；在存在重叠窗口时，则可对覆盖该帧的多个片段分数进行平均：
 
-这里主要举例三种引用方式，使用 \clist{\cite{ref}} 的引用结果作为上标出现在正文中，使用 \clist{\parencite{ref}} 的引用结果作为正文内容（一个名词）出现在正文中，使用 \clist{\footfullcite{ref}} 的引用结果作为脚注内容在脚注部分出现。
+\begin{equation}
+	r_{t}= \frac{1}{|\Omega_{t}|}\sum_{k \in \Omega_{t}}\hat{y}_{k}
+\end{equation}
 
+其中 $\Omega_t$ 表示覆盖第 $t$ 帧的片段集合。随后，当摘要长度约束取值为 $\sigma$ 时，系统需要从帧级分数中构造最终摘要向量 $\mathbf{y}\in \{0,1\}^{T}$，并满足：
 
+\begin{equation}
+	\frac{\sum_{t=1}^{T}y_{t}}{T} \leq \sigma
+\end{equation}
 
-\begin{texcode}[]{}
-  这是一个比较常见的问题 \cite{barella_situ_2021}。可以发现 xxxx \cite{atta_enhanced_2021}。\\
-  文献\parencite{张燕2013电气自动化在电气工程中的应用探讨} 提出了 xxx，文献 \parencite{黄雪芳2012探讨电气工程中自动化技术的应用} 则提出了 yyy。
-\end{texcode}
+由此可见，本章所讨论的问题并不是单纯的“视频内容压缩”，而是一个贯通段级语义表征、全局规划、多专家协同推理、上下文记忆建模以及帧级摘要生成的整体优化流程。该流程的目标不是通过额外训练学习统一参数化评分函数，而是借助大语言模型驱动的多角色协作，在开放域视频上实现更具解释性的免训练视频摘要生成。
 
-\footnote{这是脚注1}根据 zzz 发布的报告 \footfullcite{王磊2011电气自动化控制设备可靠性探究}，可以发现\footnote{这是脚注2}
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.2cm][c]{0.92\linewidth}{\centering
+		图片占位：第四章整体方法框架图。\\
+		建议展示从视频输入、分段采样、段级 caption 生成、Planner 全局规划、四个 Expert Agent 协同评分、Memory 上下文注入、段分数回填到帧级分数，以及最终评测输出的完整数据流。
+	}}
+	\caption{基于大语言模型智能体协同的视频摘要整体框架示意图。}\label{fig:c4:framework_overview}
+\end{figure}
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：Planner 与多专家协同评分机制示意图。\\
+		建议展示 Planner 从全部片段 caption 中生成 video theme、global summary 和 expert weights，随后 Story、Visual、Emotion、Information 四个专家对当前片段分别打分，并与 Planner 分数组合得到最终段级分数的过程。
+	}}
+	\caption{Planner 引导的多专家协同评分机制示意图。}\label{fig:c4:planner_expert_scoring}
+\end{figure}
+
+综上，本节从问题建模的角度明确了第四章的研究对象：在免训练设定下，如何将长视频摘要任务转化为面向段级文本描述的多智能体协同推理问题，并进一步生成满足标准评测协议的帧级摘要结果。下一节将围绕这一问题，系统介绍基于大语言模型智能体协同的视频摘要方法，包括段级描述生成、Planner 与 Expert 的协同评分机制，以及记忆增强的帧级映射与摘要构造过程。
+
+\xsection{基于大语言模型智能体协同的视频摘要方法}{LLM-agent collaborative video summarization method}
+
+\xsubsection{问题定义与方法总览}{Problem Definition and Method Overview}
+
+本节在上一节问题分析的基础上，对第四章所采用的多智能体视频摘要框架进行整体定义。与传统方法直接对帧序列或镜头序列学习统一评分函数不同，当前系统遵循一种面向推理流程的模块化建模思路，即先将长视频转化为若干可处理的片段单元，再通过段级描述生成、全局规划、多专家协同打分、历史记忆增强以及帧级回填评测等步骤，逐层完成从原始视频到最终摘要的映射。该方法对应当前工程中的主执行路径，其目标是在不增加额外训练过程的前提下，利用大语言模型的推理能力构建可解释、可插拔且可直接对接标准评测协议的视频摘要系统。
+
+从输入输出关系看，系统输入为原始视频文件及其基本元信息，输出为原始采样帧序列上的重要性分数以及由此构造的最终摘要结果。设输入视频记为 $\mathcal{V}= \{f_{1}, f_{2}, \dots, f_{T}\}$，其中 $T$ 为视频总帧数。经过处理后，系统输出的核心结果包括段级描述序列 $\mathcal{C}= \{c_{1}, c_{2}, \dots, c_{N}\}$、全局规划结果 $\mathcal{P}$、段级重要性分数序列 $\hat{\mathbf{y}}= \{\hat{y}_{1}, \hat{y}_{2}, \dots, \hat{y}_{N}\}$，以及映射到原始采样位置上的帧级分数序列 $\mathbf{r}= \{r_{1}, r_{2}, \dots, r_{M}\}$。其中 $N$ 表示视频被划分后的片段数量，$M$ 表示数据集评测协议下的原始采样帧数。基于这一表示，本章方法可以视为一个从视频到帧级分数的复合函数：
+
+\begin{equation}
+	\mathbf{r}= \mathcal{F}_{\mathrm{map}}\Big(\mathcal{F}_{\mathrm{score}}\big(\mathcal{F}_{\mathrm{plan}}(\mathcal{F}_{\mathrm{cap}}(\mathcal{F}_{\mathrm{seg}}(\mathcal{V})))\big)\Big)
+\end{equation}
+
+其中，$\mathcal{F}_{\mathrm{seg}}$ 表示视频分段函数，$\mathcal{F}_{\mathrm{cap}}$ 表示段级描述生成函数，$\mathcal{F}_{\mathrm{plan}}$ 表示 Planner 的全局规划函数，$\mathcal{F}_{\mathrm{score}}$ 表示 Planner 与多个 Expert Agent 的协同评分过程，$\mathcal{F}_{\mathrm{map}}$ 表示段级分数到帧级分数的映射过程。该表达式并非用于引入复杂理论推导，而是为了从整体上明确各模块在当前实现中的依赖关系和数据流方向。
+
+具体而言，整个框架可以划分为三个彼此衔接的核心阶段。第一阶段是视频结构化与段级语义表征构建。系统首先根据设定的分段模式将长视频划分为若干连续片段，并在每个片段内部按照均匀采样策略抽取若干代表帧，随后由视觉语言模型生成一个覆盖该片段主要动作、场景上下文与关键事件的简洁描述。这一步的目标不是直接完成摘要选择，而是将高维视频信号压缩为后续智能体推理所需的段级文本输入。
+
+第二阶段是基于 Planner 的全局理解与多专家协同评分。系统将全部片段描述输入 Planner Agent，由其推断视频主题、生成全局摘要，并动态给出不同专家维度的权重。之后，针对每一个待评估片段，Planner 结合当前片段描述与历史上下文给出一个全局视角下的重要性分数，而多个 Expert Agent 则分别从叙事推进、视觉显著性、情绪表达和信息密度等维度进行补充判断。若记 Planner 对第 $k$ 个片段给出的分数为 $p_k$，各专家分数为 $e_k^{(m)}$，专家权重为 $w_m$，则最终段级重要性可以写为：
+
+\begin{equation}
+	\hat{y}_{k}= p_{k}+ \sum_{m \in \{s,v,e,i\}} w_{m} e_{k}^{(m)}
+\end{equation}
+
+其中，指标集合 $\{s,v,e,i\}$ 分别对应 story、visual、emotion 与 information 四个维度。这一设计表明，当前系统并不是依赖某个单一的“万能评审器”给出唯一判断，而是通过全局规划与多维证据融合来提升对复杂视频内容的适应能力。
+
+第三阶段是记忆增强的时序建模与帧级摘要生成。在片段评分过程中，系统可选地保留前序片段描述作为历史记忆，用于构造当前片段的上下文输入，从而缓解相邻片段之间因语义承接和内容冗余导致的局部误判问题。随后，系统将段级最终分数回填到原始帧序列，并进一步映射到数据集定义的采样位置上，得到用于后续归一化、平滑和标准协议评测的帧级分数。若第 $t$ 帧被若干片段共同覆盖，则其分数可定义为这些片段分数的平均值：
+
+\begin{equation}
+	r_{t}= \frac{1}{|\Omega_{t}|}\sum_{k \in \Omega_{t}}\hat{y}_{k}
+\end{equation}
+
+其中 $\Omega_t$ 表示覆盖第 $t$ 帧的片段集合。由此，系统完成了从段级语义推理到帧级摘要表示的闭环转换，并可进一步与公开数据集中的标准评测协议直接对接。
+
+从当前工程实现可以看出，本章方法具有三个鲜明特征。其一，方法采用 training-free 范式，不通过额外监督训练学习参数化视频摘要模型，而是直接调用视觉语言模型和大语言模型完成描述生成与推理评分。其二，方法强调结构化协作，将全局规划、局部维度分析、历史上下文补充和帧级对齐明确拆分为多个相互配合的功能模块，从而增强系统可解释性。其三，方法具有较强的工程闭环能力，段级推理结果并不会停留在中间语义层，而是被进一步映射到帧级输出，并直接接入官方评测流程。这使得第四章方法既具备推理驱动的语义建模能力，也兼顾了实验验证所需的标准化接口。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
+		图片占位：第四章方法总览图。\\
+		建议用三层结构展示整体流程：第一层为视频输入、分段与段级 caption 生成；第二层为 Planner 全局规划与四个 Expert Agent 协同评分；第三层为 Memory 上下文注入、段级分数映射到帧级分数以及标准评测输出。
+	}}
+	\caption{基于大语言模型智能体协同的视频摘要方法总览。}\label{fig:c4:method_overview}
+\end{figure}
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：输入输出与数据流示意图。\\
+		建议展示视频、片段集合、片段 caption、PlannerPlan、segment scores、frame scores 等数据对象之间的传递关系，并标注与主代码流程一致的关键中间结果。
+	}}
+	\caption{方法输入输出关系与中间结果示意图。}\label{fig:c4:dataflow_overview}
+\end{figure}
+
+需要指出的是，本小节的目的在于从整体上界定第四章方法的组成结构与数据流边界，而非展开每一模块的内部实现细节。接下来，本文将首先介绍视频分段与段级多模态描述生成过程，说明系统如何将原始视频转化为适合多智能体推理的段级语义输入。
+
+\xsubsection{视频分段与段级多模态描述生成}{Video Segmentation and Segment-level Multimodal Caption Generation}
+
+在上一小节给出的整体框架中，视频分段与段级多模态描述生成模块承担着输入重组织与语义压缩的基础作用。由于原始视频通常包含大量连续冗余帧，如果直接将整段视频输入后续 Planner 与 Expert Agent，不仅会导致推理上下文长度迅速膨胀，也会使局部噪声和重复画面对全局判断造成干扰。因此，当前系统首先对长视频进行结构化切分，再从每个片段中抽取少量代表帧，并将这些采样帧压缩为一个简洁的段级文本描述。该模块的输出构成了后续多智能体协同推理的直接输入，是第四章方法链路中最前端且不可缺失的语义接口。
+
+从输入输出角度看，该模块的输入包括视频总帧数、分段模式、分段参数以及每段用于描述生成的采样帧数量，输出则是一个有序的片段集合以及与之对应的段级描述序列。若记输入视频为 $\mathcal{V}= \{f_{1}, f_{2}, \dots, f_{T}\}$，系统首先生成片段集合 $\mathcal{S}= \{S_{1}, S_{2}, \dots, S_{N}\}$，其中每个片段均包含起止帧索引以及用于描述生成的采样索引集合。对于第 $k$ 个片段，可记为：
+
+\begin{equation}
+	S_{k}= \{b_{k}, e_{k}, \mathcal{P}_{k}\}
+\end{equation}
+
+其中 $b_k$ 与 $e_k$ 分别表示第 $k$ 个片段的起始帧与结束帧位置，$\mathcal{P}_k= \{p_{k,1}, p_{k,2}, \dots, p_{k,m_k}\}$ 表示该片段内部被选中的采样帧索引集合。这里 $m_k$ 由用户设定的每段采样帧数与片段实际长度共同决定。当片段长度较短时，系统自动将采样数量限制在可用帧数范围内，以避免越界采样。
+
+当前实现支持两类分段方式。第一类是按片段数量切分，即在给定总片段数 $N$ 时，将视频近似平均分为若干个连续时间区间；第二类是按固定帧窗口切分，包括无重叠的固定窗口方式以及有重叠的滑动窗口方式。若采用按片段数量切分，则片段长度可近似表示为：
+
+\begin{equation}
+	\ell = \max\left(1, \left\lfloor \frac{T}{N} \right\rfloor\right)
+\end{equation}
+
+并据此得到各片段边界。若采用固定窗口方式，设窗口长度为 $L$、重叠帧数为 $o$，则滑动步长为：
+
+\begin{equation}
+	\Delta = L - o
+\end{equation}
+
+系统按步长 $\Delta$ 在时间轴上依次推进，构造片段起止边界。需要强调的是，这里的分段过程是面向工程推理效率设计的时间结构化操作，而非第三章中基于统计突变检测的镜头边界发现。因此，本节使用的 Segment 概念更接近“推理单元”，不应将其直接理解为严格语义意义上的镜头或场景。
+
+在片段划分完成后，系统不会对片段内所有帧进行描述生成，而是采用均匀采样策略选取少量代表帧。设第 $k$ 个片段长度为 $|S_k| = e_k - b_k$，若希望从中采样 $m_k$ 帧，则系统按照近似等间距原则选择索引：
+
+\begin{equation}
+	p_{k,j}= \operatorname{round}\left(b_k + \frac{(j-1)(|S_k|-1)}{m_k-1}\right), \quad j=1,2,\dots,m_k
+\end{equation}
+
+当 $m_k = 1$ 时，系统直接取片段起始位置作为唯一采样点。该策略的优点在于实现简单、覆盖均衡，并能够在不引入额外视觉评分器的前提下尽可能保留片段内部的时间跨度信息。相比随机采样，均匀采样更适合作为多智能体推理的前端，因为它提供了更稳定的时序覆盖；相比对每一帧逐一建模，它又显著降低了描述生成阶段的计算成本。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
+		图片占位：视频分段与均匀采样示意图。\\
+		建议展示原始视频时间轴被切分为多个连续 Segment，以及每个 Segment 内若干均匀分布的采样帧位置，用不同颜色标注按段数切分、固定窗口切分和滑动窗口切分三种形式。
+	}}
+	\caption{视频分段与片段内均匀采样机制示意图。}\label{fig:c4:segment_sampling}
+\end{figure}
+
+在得到采样帧之后，系统通过视觉语言模型将多帧视觉内容压缩为一个段级文本描述。当前实现采用本地多模态模型 Qwen3-VL 作为描述生成器，并通过统一提示词引导模型关注片段内的持续动作、场景上下文和主要事件。若将片段 $S_k$ 中采样得到的图像集合记为 $I_k= \{I_{k,1}, I_{k,2}, \dots, I_{k,m_k}\}$，则其段级描述生成过程可写为：
+
+\begin{equation}
+	c_k = \Phi_{\mathrm{VLM}}\big(I_k; \theta_{\mathrm{vlm}}, \pi_{\mathrm{seg}}\big)
+\end{equation}
+
+其中 $\theta_{\mathrm{vlm}}$ 表示冻结的视觉语言模型参数，$\pi_{\mathrm{seg}}$ 表示面向片段描述任务的提示词模板。与第三章中“帧级描述再向上聚合”的层级化生成方式不同，本章当前实现直接将同一片段内的多张采样图像作为联合输入，一次性生成单个片段 caption。这意味着该模块的目标并不是构造多层级语义金字塔，而是为每个推理单元提供紧凑、一致且足以支持后续打分的文本化语义摘要。
+
+值得注意的是，当前实现对描述生成过程还设置了回退机制。当某个片段因视频读取失败或采样帧为空而无法获得有效图像时，系统会返回预设的通用文本作为兜底描述，以保持整条推理链路的数据结构完整性。对于后续的 Planner 与 Expert Agent 而言，这种设计虽然牺牲了局部语义精度，但能避免前端异常导致整段视频推理流程中断，从工程角度提高了系统稳健性。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：段级多模态描述生成示意图。\\
+		建议展示一个 Segment 内的多张采样帧共同输入 Qwen3-VL，结合提示词生成单个 segment caption 的过程，并标注输出数据结构中的 segment\_id、start\_frame、end\_frame、caption\_frame\_indices 和 caption 字段。
+	}}
+	\caption{段级多模态描述生成过程示意图。}\label{fig:c4:segment_caption_generation}
+\end{figure}
+
+经过上述步骤，原始视频被转换为一组带有边界信息和文本描述的片段对象。形式化地，系统最终得到的段级语义表示可记为：
+
+\begin{equation}
+	\mathcal{C}= \{(S_{1}, c_{1}), (S_{2}, c_{2}), \dots, (S_{N}, c_{N})\}
+\end{equation}
+
+这一表示既保留了时间顺序与片段边界，又将高维视觉输入压缩为后续智能体更易处理的文本语义单元。可以看到，本模块完成的并不是最终摘要选择，而是对视频进行“面向推理的重编码”：它将原始像素序列组织为结构化片段，并进一步抽象为段级描述，为后续 Planner 在全局范围内建立主题理解、为多个 Expert Agent 在局部范围内进行维度化判断奠定了统一输入基础。下一小节将进一步介绍，系统如何基于这些段级描述构造 Planner 引导的多专家协同重要性评分机制。
+
+\xsubsection{Planner 引导的多专家协同重要性评分机制}{Planner-guided Multi-expert Collaborative Importance Scoring Mechanism}
+
+在获得段级语义表示之后，视频摘要任务的核心便转化为如何对各个片段的重要性进行稳定、可解释且具有全局一致性的评分。若仅依赖单一评分器直接对每个片段独立打分，往往容易出现两个问题：其一，局部片段虽然在视觉上显著，却可能偏离视频主线；其二，不同视频类型对“重要性”的定义并不一致，叙事类视频更强调主线推进，教程类视频更关注信息增量，风景类视频则可能更重视视觉高光。因此，当前系统并未采用统一的单模型排序方式，而是构造了一个由 Planner Agent 主导、多个 Expert Agent 协同参与的分层评分机制，使视频摘要的重要性判断同时具备全局规划能力与局部多维分析能力。
+
+从输入输出关系看，该模块的输入为上一小节得到的段级描述序列 $\mathcal{C}= \{c_{1}, c_{2}, \dots, c_{N}\}$，输出为视频级规划结果和片段级最终重要性分数。首先，Planner Agent 接收全部片段描述，生成视频级规划对象：
+
+\begin{equation}
+	\mathcal{P}= \{z, g, \mathbf{w}, \rho\}
+\end{equation}
+
+其中 $z$ 表示视频主题标签，$g$ 表示全局摘要，$\mathbf{w}= [w_{s}, w_{v}, w_{e}, w_{i}]$ 表示四类专家的权重，$\rho$ 表示 Planner 对整体规划结果的文本化解释。当前实现中，视频主题被限制在一个有限集合内，包括 story、tutorial、landscape、sports、vlog 与 general；专家权重经过归一化处理后满足：
+
+\begin{equation}
+	\sum_{m \in \{s,v,e,i\}} w_m = 1, \quad w_m \ge 0
+\end{equation}
+
+当大模型未能返回有效权重时，系统退化为均匀分配策略。这一设计保证了不同视频类型下的多专家贡献能够在统一的数值空间内进行比较，也使得后续的加权融合结果保持稳定。
+
+在完成全局规划之后，系统对每一个片段依次执行协同评分。对于当前片段 $S_k$ 及其描述 $c_k$，Planner Agent 不再重新分析整个视频，而是结合已生成的视频主题 $z$、全局摘要 $g$ 以及当前片段的语义内容，对该片段在最终摘要中的保留价值给出一个全局视角下的分数 $p_k$。与此同时，四个 Expert Agent 分别从不同语义维度对当前片段进行补充判断。设它们对应的分数分别为 $e_k^{(s)}$、$e_k^{(v)}$、$e_k^{(e)}$ 和 $e_k^{(i)}$，则四个维度的语义含义如下：
+
+\begin{itemize}
+	\item \textbf{Story Expert}：衡量当前片段对叙事推进或核心事件演化的贡献程度。
+	\item \textbf{Visual Expert}：衡量当前片段在视觉上是否具有高光性、显著性或场景变化价值。
+	\item \textbf{Emotion Expert}：衡量当前片段中情绪表达、张力变化或情感感染力的强弱。
+	\item \textbf{Information Expert}：衡量当前片段提供的新信息、讲解价值或语义增量。
+\end{itemize}
+
+与传统的多分支神经网络不同，这些 Expert 并不通过参数共享或特征分解来实现分工，而是通过各自独立的提示词约束，在统一的大语言模型接口上执行“单维度评审”任务。也就是说，系统并不是让不同模型学习不同特征子空间，而是通过角色化提示明确限定每个 Expert 的观察视角，从而增强评分过程的可解释性。
+
+在数值层面，当前实现对 Planner 与各个 Expert 的输出都施加了统一约束，即所有分数都被截断到 $[0,1]$ 区间。若记分数裁剪函数为 $\psi(\cdot)$，则有：
+
+\begin{equation}
+	p_k = \psi(\tilde{p}_k), \quad e_k^{(m)} = \psi(\tilde{e}_k^{(m)}), \quad \psi(x)= \min\{1, \max(0,x)\}
+\end{equation}
+
+其中 $\tilde{p}_k$ 与 $\tilde{e}_k^{(m)}$ 表示大模型原始返回值。该约束与权重归一化共同构成了当前评分机制的两个基础数值规则：前者保证单个评分不越界，后者保证多专家融合时不存在权重膨胀。
+
+在此基础上，系统采用如下方式计算片段的最终重要性分数：
+
+\begin{equation}
+	\hat{y}_{k}= p_{k}+ \sum_{m \in \{s,v,e,i\}} w_{m} e_{k}^{(m)}
+\end{equation}
+
+可以看到，当前实现并未对 Planner 分数再施加额外权重，而是将其作为一个全局主导项直接加入最终结果；四个 Expert 的判断则在 Planner 学到的动态权重调节下进行加权融合。该策略体现了当前系统的设计取向：Planner 负责从全局主题一致性角度建立评分基调，Expert 则负责在不同维度上提供补充证据。这样一来，若某一片段虽不一定具有强烈的视觉冲击，但对叙事推进或信息传递至关重要，系统仍可通过 Story Expert 或 Information Expert 的高分将其保留下来；反之，若某一片段视觉上高度吸引人但与视频主旨关联有限，Planner 的全局判断也能在一定程度上抑制其被过度高估。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
+		图片占位：Planner 引导的多专家协同评分流程图。\\
+		建议展示全部 segment captions 首先输入 Planner，生成 video theme、global summary 与 expert weights；随后针对当前 segment，Planner 输出 planner score，四个 Expert 分别输出各自维度的 score 与 reason，最后进入融合模块得到 final segment score。
+	}}
+	\caption{Planner 引导的多专家协同评分流程示意图。}\label{fig:c4:planner_multi_expert_pipeline}
+\end{figure}
+
+进一步地，从提示词构造角度看，该评分机制具有显式的上下文化特征。Planner 在视频级规划阶段并非只观察单个片段，而是读取全部片段描述，从而先建立视频整体主题理解；在片段评分阶段，Planner 与各个 Expert 又会共享视频主题、全局摘要以及当前片段描述，从而在一致的全局语境下完成局部评分。也就是说，当前片段的最终重要性并不是孤立决定的，而是被置于“视频整体要讲什么”这一问题之下进行评估。这种先规划、后评分的结构与直接对片段做独立打分的方法有本质区别，也是本章框架能够保持全局一致性的关键原因。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：PlannerPlan 与多专家权重分配示意图。\\
+		建议展示 PlannerPlan 数据结构中的 video\_theme、global\_summary、expert\_weights 和 reason 字段，并用柱状图或权重条形图示意不同视频主题下四个专家权重的动态变化。
+	}}
+	\caption{视频级规划结果与专家权重分配示意图。}\label{fig:c4:planner_plan_weights}
+\end{figure}
+
+需要指出的是，本小节讨论的仍然是段级评分机制本身。尽管当前 Planner 与 Expert 在评分时已经能够接收历史上下文信息，但这里的重点在于说明“全局规划 + 多维证据融合”这一核心打分逻辑，而不展开记忆上下文如何构造、如何注入以及段级分数如何映射为帧级摘要结果。下一小节将进一步介绍，系统如何利用轻量记忆机制增强时序一致性，并将当前得到的段级最终分数转换为可直接参与标准评测的帧级摘要表示。
+
+\xsubsection{记忆增强的时序建模与帧级摘要生成}{Memory-enhanced Temporal Modeling and Frame-level Summary Generation}
+
+在上一小节中，系统已经能够基于 Planner 与多个 Expert Agent 为每个片段生成段级重要性分数。然而，若将这些片段视为彼此独立的评分单元，仍然会面临两个问题。首先，长视频中的相邻片段通常存在显著的时序关联：某一片段的叙事价值往往依赖于前序片段已经提供的信息，若完全忽略上下文，局部评分容易出现突变或重复保留。其次，当前评分机制输出的是段级结果，而公开数据集和标准评测协议通常要求帧级分数序列或二值摘要向量。因此，本小节进一步引入轻量级记忆机制以增强评分过程的时序一致性，并通过段到帧的映射与标准摘要构造过程，将段级推理结果转换为可直接评测的帧级表示。
+
+从输入输出关系看，该模块的输入主要包括段级描述序列、段级最终分数、视频总帧数以及数据集定义的采样位置；输出则为原始采样帧序列上的重要性分数、进一步构造得到的二值摘要以及与标准协议对齐的评测接口。其处理链路可以概括为三个步骤：首先，根据已经出现过的片段描述构建历史上下文记忆；其次，将段级分数回填到稠密帧序列，并在原始采样位置上抽取得到帧级评分；最后，依据数据集提供的 change points 与长度约束，通过组合优化方法生成最终摘要结果。该模块因此起到了连接“段级语义推理”与“标准评测输出”的桥梁作用。
+
+在时序建模方面，当前实现采用一种非常轻量但结构清晰的记忆策略。对于当前待评分片段 $S_k$，系统将此前已经处理过的片段描述按时间顺序保存在历史集合中，并在需要时截取最近若干条记录作为上下文输入。若记第 $k$ 个片段对应的历史记忆为 $\mathcal{M}_k$，则可表示为：
+
+\begin{equation}
+	\mathcal{M}_k = \{c_{1}, c_{2}, \dots, c_{k-1}\}
+\end{equation}
+
+当设置最大历史窗口长度 $h$ 时，系统仅保留最近的 $h$ 个片段描述，即
+
+\begin{equation}
+	\mathcal{M}_k^{(h)} = \{c_{k-h}, c_{k-h+1}, \dots, c_{k-1}\}
+\end{equation}
+
+其中超出边界的项自动忽略。与复杂的外部记忆网络或检索式记忆库不同，当前方法并不对历史内容做额外编码，而是直接将前序 caption 以文本形式拼接为上下文。这样做的主要优势在于：其一，能够保持系统结构简单，与现有大语言模型接口自然兼容；其二，前序片段的语义内容可以直接被 Planner 与 Expert 作为判断当前片段的重要参考，从而缓解由于局部观察范围有限导致的误判。例如，一个视觉上相似的片段若在前文已经充分出现，则其在后续位置上的边际价值通常会下降，而这种变化恰可通过历史上下文体现出来。
+
+在完成记忆增强评分之后，系统得到片段级最终分数序列 $\hat{\mathbf{y}}= \{\hat{y}_1, \hat{y}_2, \dots, \hat{y}_N\}$。但这些分数尚不能直接用于标准视频摘要评测，因为公开数据集中的标签、用户评分与摘要构造通常以帧为基本对象。为此，系统首先在完整帧轴上构造一个稠密分数序列。若第 $t$ 帧被若干片段覆盖，则其稠密帧分数定义为覆盖该帧的所有段级分数的平均值：
+
+\begin{equation}
+	s_t = \frac{1}{|\Omega_t|}\sum_{k \in \Omega_t} \hat{y}_k
+\end{equation}
+
+其中 $\Omega_t$ 表示覆盖第 $t$ 帧的片段集合。对于当前实现中的无重叠分段模式，大多数情况下每个帧仅属于唯一片段，上式可退化为直接赋值；而在固定窗口带重叠或滑动窗口场景下，该平均机制能够平滑不同窗口对同一帧的评价差异，从而保证映射后的帧级分数更加稳定。
+
+进一步地，数据集评测并不总是在全部视频帧上进行，而通常只在原始采样位置集合上对齐评分。因此，系统在构造稠密帧分数序列之后，还需要根据采样索引集合 $\mathcal{Q}= \{q_1, q_2, \dots, q_M\}$ 提取最终的评测输入分数：
+
+\begin{equation}
+	r_i = s_{q_i}, \quad i=1,2,\dots,M
+\end{equation}
+
+其中 $M$ 为数据集定义的采样帧数，$r_i$ 表示与第 $i$ 个采样位置对应的帧级重要性分数。通过这一步，系统将内部的段级推理输出对齐到外部标准协议所需的帧级分数表示，为后续摘要构造和指标计算提供了统一输入。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
+		图片占位：历史记忆构造与评分注入示意图。\\
+		建议展示片段按照时间顺序依次进入系统，前序 segment caption 被缓存为 Previous segment 形式的文本上下文，并在当前片段评分时同时输入 Planner 和 Expert Agent 的过程。
+	}}
+	\caption{轻量记忆机制与时序上下文注入示意图。}\label{fig:c4:memory_context_injection}
+\end{figure}
+
+仅有帧级分数仍不足以完成标准视频摘要评测，因为多数协议最终需要一个满足长度约束的二值摘要向量。当前实现采用与官方评测协议兼容的摘要构造流程：先根据采样位置将帧级分数扩展回完整帧轴，再依据 change points 计算各时间段的平均分数，随后在摘要长度上限约束下，通过 0/1 背包优化选择应当保留的片段集合。若记第 $j$ 个评测分段的平均得分为 $u_j$、对应长度为 $l_j$，总容量约束为 $B$，则摘要选择问题可写为：
+
+\begin{equation}
+	\max_{\mathbf{z}} \sum_{j=1}^{K} z_j u_j \quad
+	\text{s.t.} \quad \sum_{j=1}^{K} z_j l_j \le B, \quad z_j \in \{0,1\}
+\end{equation}
+
+其中 $K$ 表示评测阶段使用的分段数量，$B$ 由总帧数与预定义摘要比例共同决定。在当前实现中，摘要比例默认取原视频长度的 $15\%$。这一设计与直接对帧级分数做简单阈值截断不同，它能够在有限长度预算下综合考虑各分段的价值与代价，更符合标准视频摘要评测的构造方式。
+
+在评测接口层面，系统进一步基于上述二值摘要与人类标注摘要计算 $F_1$、Precision、Recall 等重叠性指标，并基于帧级分数与人类评分计算 Spearman $\rho$ 与 Kendall $\tau$ 等秩相关指标。需要说明的是，这些指标的具体实验结果将在下一节统一分析；在本小节中，更重要的是强调当前方法已经通过“记忆增强评分 + 段到帧映射 + 背包式摘要构造”的组合流程，形成了一个从语义推理到标准评测的完整闭环。这意味着第四章的方法并不是停留在概念层面的多智能体打分框架，而是能够直接输出与 SumMe、TVSum 等数据集协议兼容的可评测结果。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：段级分数到帧级摘要的映射示意图。\\
+		建议展示 segment scores 先回填为 dense frame scores，再按 picks 提取 sampled frame scores，随后结合 change points 与 knapsack 选择得到最终 binary summary 的过程。
+	}}
+	\caption{段级重要性到帧级摘要输出的映射过程示意图。}\label{fig:c4:frame_mapping_and_summary}
+\end{figure}
+
+综上，本小节完成了第四章方法链路的最后一环：通过轻量记忆机制将前序片段语义注入当前评分过程，通过帧级映射将段级结果转化为评测可用的分数序列，并通过标准化的摘要构造过程生成最终摘要结果。至此，本文提出的多智能体视频摘要框架已经形成从视频输入、段级描述、协同评分到摘要输出的完整推理闭环。下一节将基于这一实现框架，对方法在公开数据集上的实验设置与性能表现进行系统分析。
+
+\xsection{实验与分析}{Experiments and Analysis}
+
+\xsubsection{数据集与评估协议}{Datasets and Evaluation Protocol}
+
+本节的目的在于说明第四章方法所采用的实验对象、数据组织形式以及与当前工程实现严格一致的评测协议。由于本章方法最终输出的是可与标准视频摘要基准直接对接的帧级分数序列，因此实验设置必须同时满足两个要求：其一，数据集需要提供视频、采样位置、分段边界以及人工摘要或人工评分等基础信息；其二，评测流程必须能够将本章方法生成的段级结果稳定映射到公开基准所要求的帧级评价形式。依据当前实现，系统支持的基准数据集为 SumMe 与 TVSum，并围绕它们构建统一的数据读取与评测接口。
+
+从数据组织角度看，当前实现并不直接从松散标注文件中构建评测样本，而是通过预先整理好的 HDF5 数据文件与名称映射文件加载单视频记录。对于给定视频，数据读取模块会解析视频路径、总帧数、采样位置、change points、每段帧数、人类摘要以及人类评分等信息，并将其封装为统一的数据记录对象。若记某个视频样本为 $\mathcal{D}_v$，则在当前实现中可抽象表示为：
+
+\begin{equation}
+	\mathcal{D}_v = \{V, T, \mathcal{Q}, \mathcal{B}, \mathcal{L}, \mathcal{Y}_{\mathrm{human}}, \mathcal{R}_{\mathrm{human}}\}
+\end{equation}
+
+其中 $V$ 表示视频文件路径，$T$ 表示视频总帧数，$\mathcal{Q}$ 表示采样帧位置集合，$\mathcal{B}$ 表示 change points 所定义的评测分段边界，$\mathcal{L}$ 表示各评测分段的长度，$\mathcal{Y}_{\mathrm{human}}$ 表示人类摘要，$\mathcal{R}_{\mathrm{human}}$ 表示人类评分。该统一数据结构使得后续推理与评测流程不再依赖数据集内部文件格式差异，而能够在统一接口上完成实验管理。
+
+当前实验对象包括两个公开视频摘要基准数据集。第一类是 SumMe，系统通过对应的 HDF5 文件与映射文件读取其视频及人工摘要信息；第二类是 TVSum，系统以相同方式读取视频路径、采样点、分段信息以及人工评分或人工摘要。需要强调的是，本章在这一小节中只陈述当前代码可直接确认的数据接口与支持范围，而不额外引入未在实现中显式使用的统计描述。因此，这里不再展开诸如视频类别数量、平均时长等扩展性数据集介绍；若后续需要在论文中补充更详细的数据集背景，应以官方数据集文档或原始论文为准。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：数据集样本结构示意图。\\
+		建议展示单个视频样本在当前代码中的字段组织形式，包括 video\_path、n\_frames、picks、change\_points、n\_frame\_per\_seg、user\_summary 与 user\_scores 等内容，以及这些字段与后续评测流程的对应关系。
+	}}
+	\caption{实验数据记录结构与评测字段示意图。}\label{fig:c4:dataset_record_structure}
+\end{figure}
+
+在评测协议方面，当前实现沿用了视频摘要任务中“先构造机器摘要，再与人工摘要或人工评分比较”的标准流程。给定本章方法输出的帧级分数序列 $\mathbf{r}= \{r_1, r_2, \dots, r_M\}$，系统首先依据采样位置将其扩展回完整帧轴，并结合数据集提供的 change points 与各分段长度，构造满足长度约束的机器摘要向量 $\mathbf{y}_{\mathrm{sys}}$。随后，将该机器摘要与人工摘要 $\mathbf{y}_{\mathrm{gt}}$ 比较，得到基于重叠度的评价指标。若记精确率与召回率分别为 $P$ 和 $R$，则当前实现中的核心重叠性指标定义为：
+
+\begin{equation}
+	P = \frac{|\mathbf{y}_{\mathrm{sys}} \cap \mathbf{y}_{\mathrm{gt}}|}{|\mathbf{y}_{\mathrm{sys}}| + \varepsilon},
+	\quad
+	R = \frac{|\mathbf{y}_{\mathrm{sys}} \cap \mathbf{y}_{\mathrm{gt}}|}{|\mathbf{y}_{\mathrm{gt}}| + \varepsilon}
+\end{equation}
+
+\begin{equation}
+	F_{1}= \frac{2PR}{P+R}
+\end{equation}
+
+其中 $\varepsilon$ 为数值稳定项。除基于二值摘要的重叠指标外，当前实现还基于帧级预测分数与人类评分序列之间的一致性，计算 Spearman 秩相关系数 $\rho$ 与 Kendall 秩相关系数 $\tau$，用于衡量模型对相对重要性排序的保持能力。
+
+对于多用户标注情形，当前代码对 SumMe 与 TVSum 采用了不同的聚合策略。对于 SumMe，系统使用最大 $F_1$ 聚合方式；对于 TVSum，则采用平均 $F_1$ 聚合方式。形式化地，若同一视频对应 $U$ 个人工摘要，则其最终 $F_1$ 可写为：
+
+\begin{equation}
+	F_{1}^{\mathrm{SumMe}} = \max_{u \in \{1,\dots,U\}} F_{1}^{(u)},
+	\quad
+	F_{1}^{\mathrm{TVSum}} = \frac{1}{U}\sum_{u=1}^{U} F_{1}^{(u)}
+\end{equation}
+
+这一设置与当前实现中的 reduction 策略保持一致，并体现了两个数据集在标准评测协议上的差异。
+
+除了基础评测逻辑外，当前实验接口还在正式计算指标之前，对模型输出帧级分数构造两个评测变体，即归一化后的原始分数序列与归一化后进一步平滑的分数序列。记二者分别为 $\mathbf{r}^{\mathrm{raw}}$ 与 $\mathbf{r}^{\mathrm{smooth}}$，则当前评测流程会对这两个变体分别计算全部指标。这一设计的目的不是引入新的方法模块，而是便于在实验阶段区分原始推理结果与简单后处理策略对摘要质量的影响。由于当前工作区中尚未提供真实实验输出文件，本小节仅说明这一协议设置的存在，不对其优劣作任何定量结论。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
+		图片占位：评测协议流程图。\\
+		建议展示从 frame scores 输入开始，经归一化、平滑、change points 分段、knapsack 摘要构造，到 F1、Precision、Recall、Spearman 和 Kendall 计算的整体评测流程。
+	}}
+	\caption{当前实现中的视频摘要评测协议流程示意图。}\label{fig:c4:evaluation_protocol}
+\end{figure}
+
+需要说明的是，当前实现还支持两种实验运行方式：一种是针对单个指定视频执行推理与评测；另一种是针对整个数据集逐视频运行，并基于官方 split 信息进一步做聚合统计。这意味着第四章后续实验既可以汇报单视频案例分析，也可以汇报按数据集或按 split 聚合后的整体表现。然而，由于当前工作区中未发现现成的实验输出文件、汇总报告或可视化结果，本小节不对具体数值、表格和性能结论进行描述，相关内容将在后续实际运行实验后补充。
+
+综上，本小节明确了第四章实验部分所依赖的两个基准数据集与当前代码实现中的评测协议：系统以 SumMe 和 TVSum 作为标准测试对象，通过统一的数据记录接口读取视频与标注信息，通过帧级分数映射和机器摘要构造实现与官方协议对齐，并最终采用 $F_1$、Precision、Recall、Spearman $\rho$ 和 Kendall $\tau$ 等指标对方法进行量化评估。下一小节将在这一协议基础上，进一步介绍实验所采用的运行设置与关键实现细节。
+
+\xsubsection{实验设置}{Experimental Settings}
+
+在明确数据集与评测协议之后，本小节进一步说明第四章实验所采用的运行方式、模型配置、关键超参数以及输出组织形式。需要强调的是，以下内容均严格依据当前工程主执行流程与配置接口进行整理，其作用是说明“实验如何被运行”，而非提前给出任何性能结论。由于当前工作区中尚未提供完整的硬件环境记录与既有实验日志，本文仅陈述代码中可以直接确认的设置项，对于无法从实现中直接验证的环境细节不作扩展性描述。
+
+从运行入口看，当前系统通过统一命令行接口完成单视频推理、单视频评测以及整合式运行评测三类实验任务。若记实验任务类型为 $a$，则当前实现支持的任务集合为：
+
+\begin{equation}
+	\mathcal{A}= \{\mathrm{run}, \mathrm{eval}, \mathrm{run\_eval}\}
+\end{equation}
+
+其中，$\mathrm{run}$ 表示仅对输入视频执行分段、描述生成、多智能体评分与帧级分数输出；$\mathrm{eval}$ 表示在已有中间结果基础上执行标准评测；$\mathrm{run\_eval}$ 则表示将推理与评测串联为一次完整实验流程。对于公开数据集上的批量实验，系统还支持指定数据集名称、数据根目录、split 文件目录以及 split 数量，从而逐视频完成推理与评测，并在数据集层面进一步生成聚合结果。由此可见，当前实验框架既可服务于单视频案例分析，也可用于标准基准下的批量统计评估。
+
+在大语言模型调用方式上，当前实现提供真实接口调用与调试用模拟接口两种模式。若记语言模型工作模式为 $m$，则有：
+
+\begin{equation}
+	m \in \{\mathrm{api}, \mathrm{mock}\}
+\end{equation}
+
+其中，$\mathrm{api}$ 模式通过 OpenAI 兼容接口访问外部大语言模型服务，运行时需要提供环境变量中的 API Key，并可选指定自定义 Base URL；$\mathrm{mock}$ 模式则返回结构化的模拟结果，主要用于流程调试、接口连通性验证与单元测试场景。在当前默认设置下，Planner 与 Expert Agent 所共享的语言模型名称为 gpt-4o-mini，温度参数设置为 $0.2$，并保留有限次重试机制以提升接口调用稳定性。需要指出的是，这一设置主要作用于规划与评分阶段，而前端段级描述生成并不依赖该文本接口。
+
+与 Planner 和 Expert 的文本推理模块相对应，段级多模态描述生成阶段采用本地视觉语言模型完成。当前实现默认使用 Qwen3-VL-8B-Instruct 作为 segment captioner 的底层模型，并通过自动设备选择机制加载模型参数。对于每个片段，系统根据预设提示词引导模型关注持续动作、场景上下文与主要事件，并将最大生成长度限制为 96 个新 token。该设置反映出当前实验框架对前端语义压缩模块的基本取舍：一方面保留多帧联合理解能力，另一方面通过较短输出控制描述冗长度，以避免后续 Planner 输入上下文过度膨胀。
+
+在视频结构化参数方面，当前代码支持按段数切分、固定窗口切分和滑动窗口切分三种分段模式。若将分段方式记为 $\mu$，则有：
+
+\begin{equation}
+	\mu \in \{\mathrm{count}, \mathrm{fixed\_frames}, \mathrm{sliding\_window}\}
+\end{equation}
+
+其中，当前 README 所给出的推荐设置采用按段数切分模式，即默认将每个视频划分为 8 个片段；与此同时，每个片段默认抽取 4 帧用于段级描述生成。若需要启用滑动窗口机制，系统还允许进一步指定窗口重叠长度。上述设置说明，第四章实验中的前端时间结构化并不是固定不变的，而是通过统一参数接口控制；不过在后续实际实验中，若无特别说明，宜优先沿用当前主流程推荐的 count 模式与 8 段设置，以保证全文实验口径一致。
+
+除了分段与描述生成参数外，当前实验还可选择是否启用历史记忆机制。若记记忆开关为 $\delta \in \{0,1\}$，则当 $\delta = 1$ 时，系统会在当前片段评分前拼接前序片段描述作为文本上下文，并通过最大历史片段数 $h$ 控制记忆窗口长度；在 README 给出的推荐运行命令中，$h$ 默认取 8。该设置意味着，当前实验中的记忆机制不是无限累积的长程缓存，而是受窗口约束的轻量上下文注入策略。对于长视频而言，这种截断式设计有利于在保持时序连续性的同时避免提示词长度随视频长度线性增长。
+
+在评测后处理参数方面，当前实现会针对模型输出的帧级分数生成两个评测变体，即归一化原始分数与归一化平滑分数。设原始帧级分数序列为 $\mathbf{r}$，则可进一步得到：
+
+\begin{equation}
+	\mathbf{r}^{\mathrm{raw}} = \operatorname{Norm}(\mathbf{r}),
+	\quad
+	\mathbf{r}^{\mathrm{smooth}} = \operatorname{Smooth}(\operatorname{Norm}(\mathbf{r}); w)
+\end{equation}
+
+其中 $w$ 表示平滑窗口长度。当前命令行接口中，该窗口默认取 5。实验过程中，系统会分别对这两个变体计算 $F_1$、Precision、Recall、Spearman $\rho$ 与 Kendall $\tau$，以观察简单后处理对最终摘要质量的影响。需要说明的是，这一平滑操作属于评测前的信号整形步骤，而非第四章方法主体中新增的学习模块，因此后文在讨论实验结果时应将其视为评测设置的一部分。
+
+对于整数据集实验，当前实现还支持基于 split 的聚合统计。具体而言，系统可从给定的 split 根目录中读取预定义划分，并按照设定的 split 数量逐一汇总不同 split 上的实验结果。在当前命令行接口中，split 数量被约束为 5 或 50 两种常见配置。每次聚合完成后，系统会进一步生成面向整体实验的统计文件，包括 JSON 格式的指标概览、逐视频记录以及 Markdown 形式的汇总表。该设计有助于将逐视频推理结果自动整理为可直接分析的实验档案，从而减少人工汇总误差。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：实验运行配置示意图。\\
+		建议展示命令行入口、任务类型、LLM 模式、caption 模型、分段参数、记忆开关和平滑窗口等配置项之间的关系，并标注单视频运行与数据集批量运行两种路径。
+	}}
+	\caption{当前实现中的实验运行配置与参数组织示意图。}\label{fig:c4:experiment_settings}
+\end{figure}
+
+从实验输出组织形式看，当前系统将推理结果与评测结果分别写入输出目录与评测目录。在单视频评测场景下，系统会按“实验名 / 数据集名 / 视频名”的层次创建子目录，并保存帧级分数、不同评测变体结果、预测与人工曲线对比图以及整体概览文件。进一步地，系统还会自动维护 overview.json、overview\_records.json 与 overview.md 等汇总文件，以便后续在论文中整理表格与案例分析。因此，第四章实验部分不仅具备标准化的运行接口，也已经具备较完整的结果落盘与汇总能力。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：实验输出目录与报告文件示意图。\\
+		建议展示 outputs 与 outputs/evaluation 下的目录层次，以及 frame\_scores\_variants.json、eval\_normalized\_raw.json、eval\_normalized\_smoothed.json、overview.json 和 overview.md 等文件之间的关系。
+	}}
+	\caption{实验结果落盘与汇总报告组织形式示意图。}\label{fig:c4:experiment_outputs}
+\end{figure}
+
+综上，第四章实验采用统一命令行入口组织推理与评测流程，在模型侧结合 gpt-4o-mini 与 Qwen3-VL-8B-Instruct 分别完成文本推理和段级描述生成，在参数侧提供分段模式、采样帧数、记忆窗口与平滑窗口等可控配置，并在结果侧形成按视频、按数据集和按 split 的多层次输出结构。这些设置共同构成了后续实验分析的实现基础。下一小节将在此基础上，对方法的整体性能表现进行进一步讨论。
+
+\xsubsection{总体性能表现}{Overall Performance}
+
+本小节的目的在于给出第四章方法在公开基准上的总体性能表现，并以规范化表格形式预留与已有代表性方法的对比位置。依据前一小节给出的实验协议，本文优先采用按官方 split 聚合后的 Mean $F_1$ 作为主指标，同时在必要时结合 Precision、Recall 以及秩相关指标辅助分析。需要说明的是，当前工作区中已经可以直接核验本方法的多组真实实验结果，但尚未提供统一整理完成的文献基线数值表。因此，表\ref{tab:c4:overall_performance} 中仅填写当前仓库内已落盘且可核验的本方法结果，其余方法保留为待补位置，后续应结合正式引用文献逐项补全。
+
+为与第三章实验写法保持一致，表\ref{tab:c4:overall_performance} 按方法类别组织对比对象，并统一汇报 SumMe 与 TVSum 上的总体性能。表中列出的监督方法、无监督方法和 training-free 方法主要用于构成后续正式论文中的横向比较框架；在当前版本中，这些方法的具体数值暂不做主观估计或人工补写，而应以后续查证的原始论文或权威复现结果为准。
+
+\begin{table}[t]
+	\centering
+	\small
+	\caption{第四章方法与代表性视频摘要方法的总体性能对比框架。}\label{tab:c4:overall_performance}
+	\begin{tblr}{
+		width=\linewidth,
+		colspec={Q[l,wd=0.14\linewidth] Q[l,wd=0.30\linewidth] Q[l,wd=0.16\linewidth] Q[c,wd=0.17\linewidth] Q[c,wd=0.17\linewidth]},
+		colsep=1pt,
+		rowsep=0pt,
+		cell{1}{1}={r=2}{c},
+		cell{1}{2}={r=2}{c},
+		cell{1}{3}={r=2}{c},
+		cell{1}{4}={c=2}{c},
+	}
+		\toprule
+		\textbf{类别} & \textbf{方法} & \textbf{监督形式} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ \\
+		\cmidrule{4-5}
+		& & & \textbf{结果} & \textbf{结果} \\
+		\midrule
+		监督方法 & LSTM & Supervised & 待补 & 待补 \\
+		监督方法 & dppLSTM & Supervised & 待补 & 待补 \\
+		监督方法 & VASNet & Supervised & 待补 & 待补 \\
+		监督方法 & PGL-SUM & Supervised & 待补 & 待补 \\
+		\midrule
+		无监督方法 & KTS & Unsupervised & 待补 & 待补 \\
+		无监督方法 & SUM-GAN & Unsupervised & 待补 & 待补 \\
+		无监督方法 & DR-DSN & Unsupervised & 待补 & 待补 \\
+		无监督方法 & Random / Uniform & Unsupervised & 待补 & 待补 \\
+		\midrule
+		Training-free 方法 & CLIP-Score & Training-free & 待补 & 待补 \\
+		Training-free 方法 & BLIP2-based & Training-free & 待补 & 待补 \\
+		Training-free 方法 & LLM-based & Training-free & 待补 & 待补 \\
+		Training-free 方法 & Ours (DeepSeek, 8 seg., smoothed / raw-best) & Training-free & 51.89 & 51.41 \\
+		Training-free 方法 & Ours (DeepSeek, 16 seg., raw) & Training-free & 待补 & 52.25 \\
+		Training-free 方法 & Ours (GPT-4o, 8 seg., smoothed) & Training-free & 待补 & 50.19 \\
+		\bottomrule
+	\end{tblr}
+\end{table}
+
+从当前已经核验的结果看，本文方法在 SumMe 与 TVSum 上均能够稳定得到超过 $50\%$ 的 split 聚合 Mean $F_1$。其中，SumMe 上当前最优的可核验结果来自 DeepSeek 后端、8 段划分并结合平滑后处理的设置，对应 Mean $F_1$ 为 $51.89\%$；TVSum 上当前最优结果来自 DeepSeek 后端、16 段划分且不使用平滑的设置，对应 Mean $F_1$ 为 $52.25\%$。这表明，基于 Planner 与多专家协同推理的摘要框架已经能够在两个标准数据集上形成较稳定的训练外推理能力。
+
+进一步观察当前归档实验可以发现，本文方法在不同设置下的性能变化主要体现在分段粒度、后处理方式以及底层语言模型后端三个方面。对于 SumMe，当前最优结果出现在平滑后处理设置下，说明适度的分数整形有助于提高机器摘要与人工摘要之间的重叠程度；对于 TVSum，更细的分段粒度则表现出更强的摘要筛选能力，说明在视频内容跨度更长、主题转换更频繁的场景中，增加推理单元密度有助于提升关键片段捕获效果。
+
+需要强调的是，表\ref{tab:c4:overall_performance} 中除本文方法外的其他方法目前仅作为正式论文的大表格结构占位，其具体数值仍需在后续定稿阶段结合对应文献逐项补全。因此，现阶段能够得到的严格结论主要限于：一方面，本文方法已经具备可核验的公开基准实验结果；另一方面，其在 SumMe 与 TVSum 上均表现出较稳定的总体性能水平。至于与更多监督、无监督及 training-free 方法之间的细粒度优劣关系，则有待下一小节结合补充完成的文献基线与对照实验进一步分析。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：总体性能柱状图。\\
+		建议展示 SumMe 与 TVSum 上各个已完成实验配置的 Mean $F_1$、Precision 和 Recall 对比，可按 DeepSeek-8、GPT-4o-8、DeepSeek-16 等设置分组绘制柱状图，用于体现不同配置下的整体性能水平。
+	}}
+	\caption{已完成归档实验在公开数据集上的总体性能对比示意图。}\label{fig:c4:overall_performance_bar}
+\end{figure}
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：5-split 聚合结果分布图。\\
+		建议展示 SumMe 与 TVSum 上不同实验配置在 5 个 split 上的 Mean $F_1$ 波动情况，可采用折线图或箱线图，突出不同配置在 split 维度上的稳定性差异。
+	}}
+	\caption{不同实验配置在 5-split 协议下的性能分布示意图。}\label{fig:c4:overall_performance_split}
+\end{figure}
+
+需要指出的是，以上结果均来自当前仓库内已经完成并保存的真实实验记录，而非重新估计或人工补写的数值。与此同时，现有归档结果尚未形成对所有变量的系统扫参，例如 SumMe 上不同后端模型之间的完整对比、TVSum 上更广泛的重叠窗口设置等仍有待补充。因此，本小节的作用主要是给出当前方法的总体性能边界和现阶段最好的可核验结果，而关于不同模型后端、分段粒度与后处理策略之间的更细致差异，下一小节将继续展开分析。
+
+\xsubsection{消融实验}{Ablation Studies}
+
+本小节的目的在于进一步分析第四章方法中若干关键设计选择对摘要性能的影响。与上一小节侧重总体性能汇总不同，这里更关注系统内部配置变化带来的性能差异。需要首先说明的是，依据当前工作区中可直接核验的主执行链路，已经完成并保存结果的“可验证消融”主要集中在两个层面：其一是分段粒度变化，即按 8 段与 16 段两种方式组织视频推理单元；其二是评测后处理变化，即比较归一化原始分数与归一化平滑分数。对于更细的模块级消融，例如显式关闭记忆、移除 Planner 或裁剪专家集合，当前仓库中虽然保留了部分研究配置痕迹，但尚未在现有主评测链路下形成可直接复核的成套结果，因此本小节对这部分内容仅给出规范化实验骨架，不作虚构性结论。
+
+为便于统一描述，若记某一配置下的 Mean $F_1$ 为 $F_{1}(\mathcal{C})$，则两个配置之间的性能变化可记为：
+
+\begin{equation}
+	\Delta F_{1}= F_{1}(\mathcal{C}_{1}) - F_{1}(\mathcal{C}_{2})
+\end{equation}
+
+其中 $\mathcal{C}_{1}$ 与 $\mathcal{C}_{2}$ 分别表示两种待比较的实验设置。在当前已落盘结果中，本文主要比较的是真实可运行配置之间的相对差异，而不是对不存在结果的模块做假设性排序。
+
+表\ref{tab:c4:ablation_verified} 汇总了当前 DeepSeek 后端下已经完成的设置消融结果。这里之所以统一固定后端模型，是为了避免将底层语言模型差异与系统内部结构差异混杂在一起。可以看到，8 段与 16 段两种分段粒度，以及 raw 与 smoothed 两种评测变体，已经覆盖了当前主执行链路中最稳定且最容易复现的两类配置变化。
+
+\begin{table}[t]
+	\centering
+	\small
+	\caption{当前主执行链路下已核验的设置消融结果。}\label{tab:c4:ablation_verified}
+	\begin{tblr}{
+		width=\linewidth,
+		colspec={Q[l,wd=0.15\linewidth] Q[l,wd=0.21\linewidth] Q[l,wd=0.26\linewidth] Q[c,wd=0.17\linewidth] Q[c,wd=0.17\linewidth]},
+		colsep=1pt,
+		rowsep=0pt,
+	}
+		\toprule
+		\textbf{后端} & \textbf{分段设置} & \textbf{评测变体} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ \\
+		\midrule
+		DeepSeek & 8 segments & normalized\_raw & 51.41 & 51.41 \\
+		DeepSeek & 8 segments & normalized\_smoothed & \textbf{51.89} & 50.73 \\
+		DeepSeek & 16 segments & normalized\_raw & 50.66 & \textbf{52.25} \\
+		DeepSeek & 16 segments & normalized\_smoothed & 51.12 & 51.81 \\
+		\bottomrule
+	\end{tblr}
+\end{table}
+
+从表\ref{tab:c4:ablation_verified} 可以看出，分段粒度对两个数据集的影响并不完全一致。对于 SumMe，8 段设置整体优于 16 段设置，特别是在 smoothed 变体下，8 段设置取得了 $51.89\%$ 的 Mean $F_1$，而 16 段设置对应结果为 $51.12\%$。这表明在视频长度较短、关键事件相对集中的场景下，过细的分段可能会把原本完整的语义单元切分得过于零散，进而削弱 Planner 对全局主题和片段间关系的稳定判断。
+
+与之相对，TVSum 上的结果呈现出不同趋势。16 段设置在 raw 变体下取得了当前最优的 $52.25\%$ Mean $F_1$，高于 8 段设置的 $51.41\%$。这说明对于主题跨度更大、时长更长的视频集合，更细的时间切分能够为多智能体推理提供更高分辨率的候选片段，使系统更容易定位局部关键事件。不过，当进一步引入平滑后处理时，16 段设置虽然仍保持较高性能，但 Mean $F_1$ 略有回落，说明更高分辨率的片段划分与平滑操作之间并非总是完全协同。
+
+进一步从后处理角度看，平滑操作在两个数据集上的作用也具有明显差异。对于 SumMe，无论是 8 段还是 16 段设置，normalized\_smoothed 的结果都略高于 normalized\_raw，说明在较短视频中对帧级分数进行轻量平滑有助于缓解局部波动，提高机器摘要与人工摘要之间的重叠程度。对于 TVSum，情况则相反：两个分段设置下，smoothed 变体的 Mean $F_1$ 均低于 raw 变体。这说明在内容变化更丰富的视频上，平滑操作虽然可能增强分数曲线的连续性，但也可能削弱部分短时高价值片段的峰值，从而影响最终摘要选择。
+
+需要说明的是，上述结果仍属于“设置级消融”，其比较对象是当前主评测链路中已经真正运行完成的配置差异，而不是对所有内部模块进行逐一关闭后的严格模块消融。对于模块级消融，当前代码中唯一能够直接从主执行入口确认的显式开关是记忆机制，即通过是否启用 \texttt{enable\_memory} 决定是否向 Planner 与 Expert 提供历史片段上下文。然而，当前工作区中尚未发现与该开关对应的完整数据集级落盘结果，因此无法在本节中给出可靠数值。为保持论文结构完整性，表\ref{tab:c4:ablation_pending} 给出了后续可补充的模块级消融表格骨架。
+
+\begin{table}[t]
+	\centering
+	\small
+	\caption{模块级消融实验结果骨架（待补）。}\label{tab:c4:ablation_pending}
+	\begin{tblr}{
+		width=\linewidth,
+		colspec={Q[l,wd=0.14\linewidth] Q[l,wd=0.34\linewidth] Q[c,wd=0.16\linewidth] Q[c,wd=0.16\linewidth] Q[c,wd=0.12\linewidth]},
+		colsep=1pt,
+		rowsep=0pt,
+	}
+		\toprule
+		\textbf{变体} & \textbf{设置说明} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ & \textbf{状态} \\
+		\midrule
+		Full System & Planner + Experts + Memory + Frame Mapping & 待补 & 待补 & 待补 \\
+		w/o Memory & 关闭历史 caption 上下文注入 & 待补 & 待补 & 待补 \\
+		w/o Smoothing & 使用 normalized\_raw 评测变体 & 见表\ref{tab:c4:ablation_verified} & 见表\ref{tab:c4:ablation_verified} & 已完成 \\
+		16 Segments & 将 \texttt{segment\_value} 调整为 16 & 见表\ref{tab:c4:ablation_verified} & 见表\ref{tab:c4:ablation_verified} & 已完成 \\
+		\bottomrule
+	\end{tblr}
+\end{table}
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：已核验消融结果柱状图。\\
+		建议展示 DeepSeek 后端下 8 segments / 16 segments 与 raw / smoothed 两两组合在 SumMe 和 TVSum 上的 Mean $F_1$ 对比，以突出分段粒度与后处理方式对性能的不同影响。
+	}}
+	\caption{当前主执行链路下设置消融结果示意图。}\label{fig:c4:ablation_verified_bar}
+\end{figure}
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：模块级消融设计示意图。\\
+		建议展示 Full System、w/o Memory 以及不同 segment\_value 设置在当前推理流程中的差异位置，标明记忆模块位于 Planner/Expert 打分前的上下文构造阶段，分段粒度位于前端预处理阶段。
+	}}
+	\caption{模块级与设置级消融位置示意图。}\label{fig:c4:ablation_design}
+\end{figure}
+
+综上，当前可以严格核验的消融结果表明，分段粒度与评测后处理对第四章方法的最终摘要性能具有直接影响，而且这种影响在 SumMe 与 TVSum 上表现出明显差异：前者更受益于较粗粒度分段和轻量平滑，后者则更受益于更细粒度的片段建模。与此同时，记忆机制等更贴近方法内部结构的模块级消融仍有待补充完整结果。下一小节将在此基础上，进一步结合具体样例和可视化结果，对方法行为进行更细致分析。
+
+\xsubsection{可视化结果与定性分析}{Visualization and Qualitative Analysis}
+
+为了进一步说明第四章方法在真实视频上的工作方式，本小节结合当前仓库中已经保存的逐视频推理结果与评测结果，从“摘要片段选择结果”和“帧级评分曲线分析”两个层面进行定性分析。与上一章基于传统层级语义匹配框架的分析不同，这里关注的是当前多智能体推理链路本身，即 Planner 如何在全局主题约束下调节多专家判断，以及这种段级决策如何映射为最终的帧级摘要分数。需要强调的是，以下分析所涉及的案例均来自现有归档结果中的真实视频，包括 SumMe 中的 ``Cooking''、``Eiffel Tower''，以及 TVSum 中的 ``AwmHb44\_ouw'' 与 ``vdmoEJ5YbrQ''。
+
+\subsubsection{摘要片段选择结果}
+
+从当前归档的 segment 级推理结果看，本文方法在不同视频类型上表现出较一致的选择规律：对于教程类视频，系统会优先保留真正承担步骤推进或关键演示作用的片段；对于景观类与 vlog 类视频，则更强调代表性场景、视角切换以及是否存在明显重复。这一现象与当前框架中的 Planner + Expert 协同机制是一致的，即 Planner 先根据整段视频 caption 建立主题理解，再由 Story、Visual、Emotion 与 Information 四个专家分别提供局部证据，最终形成段级重要性排序。
+
+以 SumMe 中的 ``Cooking'' 为例，当前归档结果将视频前半段大量重复的铁板烹饪操作压到较低分值，而把后半段的火焰展示片段显著抬高。具体而言，segment 1、3、4 的 final score 分别约为 $0.675$、$0.775$ 和 $0.725$，其 Planner reason 均明确指出这些片段与前文在食材和动作上高度重复，新增信息有限；相比之下，segment 6 和 segment 7 的 final score 分别达到 $1.8625$ 与 $1.8375$，对应的 Planner 与 Visual Expert 均将其识别为 ``dramatic flaming presentation''，即整个教程视频的表演性高潮。由此可以看出，当前方法并不是简单偏好动作密集片段，而是能够区分“重复的常规操作”和“具有阶段性收束意义的高光片段”，从而使摘要更接近人类在教程视频中的观看偏好。
+
+类似地，在 TVSum 的维修教程视频 ``AwmHb44\_ouw'' 中，系统的高分段主要集中在真正构成维修流程骨架的操作环节。根据归档结果，segment 2、3、4、6 的 final score 分别约为 $1.475$、$1.5625$、$1.35$ 和 $1.4$，对应内容涵盖拆卸螺母、将轮胎从轮辋上撬下、处理轮辋以及后续清理等关键步骤；而仅承担开场介绍或口头说明作用的 segment 0 与 segment 7 得分则分别约为 $1.325$ 和 $1.20$。其中，segment 3 被 Planner 与 Information Expert 同时视为“removing the tire from the rim”这一核心步骤，因此在视觉冲击并不特别强的情况下仍获得了较高排序。这说明当前多智能体框架在教程类视频中能够优先保留真正具有程序语义和教学价值的内容，而不是仅凭镜头运动或局部纹理变化做出选择。
+
+对于景观类视频 ``Eiffel Tower''，系统的判断标准则明显偏向于“是否提供新的代表性视角”。当前 8 段归档结果中，segment 3 与 segment 4 的 final score 分别约为 $1.6125$ 与 $1.525$，其高分原因主要来自仰视塔体内部钢结构、穿过拱门观察整体轮廓以及地面游客活动所带来的空间层次变化；而 segment 7 的 final score 下降到 $1.1125$，Planner 明确指出该片段虽然仍然展示铁塔底部结构，但与前面多个低角度镜头相比“incremental rather than novel”。这说明对于景观类内容，当前方法不仅关注视觉显著性，还会结合全局上下文抑制重复视角，从而避免摘要被大量相似的地标镜头占满。
+
+再看 TVSum 中的 vlog 视频 ``vdmoEJ5YbrQ''，系统表现出对“具有人物互动和环境代表性片段”的明显偏好。segment 0 的 final score 为 $1.475$，其高分原因主要在于雪地群体活动、人物出镜与环境全景共同建立了视频的主题基调；segment 1 仍保留较高得分 $1.2625$，因为它补充了人与宠物在雪地中的互动。相对地，视频后段大量车内行驶镜头被显著压低，其中 segment 6 和 segment 7 的 final score 分别仅为 $0.7125$ 与 $0.575$。Planner 在这两段中的判断都强调，其内容虽然维持了“冬季出行”的连续性，但已经缺乏新的场景信息和互动事件，因此只适合作为过渡而不应大量保留。由此可见，当前方法对 vlog 类视频并不会过度追逐技术上稳定的镜头，而是更重视是否真正承载了旅程中的代表性事件。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：代表性视频的摘要片段选择结果。\\
+		建议选取 Cooking、Eiffel Tower、AwmHb44\_ouw 和 vdmoEJ5YbrQ 四个案例，按时间顺序展示原视频片段、系统保留片段以及人工标注高分区域之间的对应关系，并在图中标注高分 segment 编号。
+	}}
+	\caption{代表性视频的摘要片段选择结果示意图。}\label{fig:c4:qualitative_segment_selection}
+\end{figure}
+
+综上，从逐段推理结果可以看到，当前方法在不同视频类型上都能形成相对稳定的“保留关键阶段、抑制重复内容”的选择逻辑。更重要的是，这种选择不是黑盒地产生，而是能够通过 Planner reason 与各 Expert reason 直接追溯到“为什么某段重要、为什么某段冗余”的语义依据，从而使最终摘要具有较强的可解释性。
+
+\subsubsection{帧级评分曲线分析}
+
+在当前实现中，段级最终分数会先被映射到完整帧轴，再根据评测所需的采样位置提取帧级分数。因此，从逐视频评测文件中可以观察到一种非常清晰的曲线结构：原始帧级分数往往呈现明显的分段平台，而平滑后的曲线则在平台边缘形成更加连续的过渡。这一现象本质上来源于第四章方法的实现方式，即片段是当前多智能体推理的基本单位，而帧级结果则是段级语义判断在时间轴上的展开。
+
+以 ``Cooking'' 的评测结果为例，原始 frame scores 在前半段长期维持在中等平台，而在后半段火焰展示对应的时间区域显著抬升。结合推理结果可以发现，这一高平台正对应 segment 6 与 segment 7 两个被 Planner 判定为高潮的片段。由于这两个片段的 final score 明显高于前面的重复烹饪段，映射到帧轴后便表现为连续的高分区间，从而使 knapsack 选择阶段更倾向于保留该部分内容。类似地，在 ``AwmHb44\_ouw'' 中，拆轮胎、撬轮辋和清理等关键步骤所在区域形成了多个相邻高平台，说明教程视频中的程序性强步骤会在帧级曲线上表现为较稳定的连续高分，而非孤立尖峰。
+
+对于 ``Eiffel Tower'' 这类景观视频，帧级曲线则更能体现“重复视角抑制”的作用。已有评测结果显示，该视频的 frame scores 呈现多个分段常值区间，例如约 $0.7000$、$0.7250$、$1.0000$ 与 $0.8250$ 等平台，其对应的正是不同 segment 在段到帧映射后的展开。由于 segment 3 等片段在 Visual Expert 与 Story Expert 中同时得到较高评价，因此其对应平台被整体抬高；而后段多个重复的塔下仰视镜头虽然仍保留一定分数，但平台高度明显回落。由此可以看出，当前方法对景观视频并不是简单寻找“最亮眼”的单帧，而是在较长时间尺度上给更具代表性的视角段落以更高权重。
+
+在 vlog 视频 ``vdmoEJ5YbrQ'' 中，这种分段平台特征更加直观。根据当前归档评测结果，其 normalized\_raw frame scores 在视频开头大段时间内保持为 $1.0$ 的高平台，随后依次回落到约 $0.7639$ 和 $0.6111$ 等区间。这一变化与 segment 级推理结论高度一致：前段雪地集体活动和人物互动最能代表视频主题，因此整体得分最高；而后续车内行驶与低质量晃动镜头只承担过渡作用，于是映射后的整段平台被整体下调。也就是说，帧级评分曲线在这里并不是由局部视觉噪声主导，而是基本遵循段级语义重要性的全局排序。
+
+此外，将 normalized\_raw 与 normalized\_smoothed 两种评测变体结合起来看，还可以更清楚地理解上一小节中的消融现象。对于 ``Cooking'' 这类高潮较为集中的视频，平滑操作能够在相邻高分段之间形成更连续的过渡，从而减少局部边界抖动；而对于 TVSum 中某些包含短时关键信息的视频，过度平滑则可能压低原本由段级高分带来的局部峰值，这也与表\ref{tab:c4:ablation_verified} 中 TVSum 更偏好 raw 变体的结果相吻合。因此，帧级曲线不仅可用于解释单个视频的摘要选择，还能够反向说明不同后处理策略为何会对最终 $F_1$ 产生不同影响。
+
+\begin{figure}[t]
+	\centering
+	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
+		图片占位：代表性视频的帧级评分曲线。\\
+		建议分别绘制 Cooking、Eiffel Tower、AwmHb44\_ouw 与 vdmoEJ5YbrQ 的 normalized\_raw 和 normalized\_smoothed 曲线，并在下方用色块标出系统最终选择的摘要区间与人工高分区间。
+	}}
+	\caption{代表性视频的帧级评分曲线与摘要区间示意图。}\label{fig:c4:qualitative_frame_curves}
+\end{figure}
+
+总体而言，定性结果与前述定量实验呈现出较强一致性：Planner 负责在全视频层面识别主题与关键阶段，多专家则从叙事推进、视觉高光、情绪强度和信息增量等维度补充局部证据，最终通过段到帧映射形成具有明确结构的分数曲线。正因为这一过程能够同时保留教程视频中的关键步骤、景观视频中的代表性视角以及 vlog 视频中的真实事件节点，本文方法才得以在不同类型数据上保持较稳定的摘要生成能力。
+
+\xsection{本章小结}{summary}
+
+本章围绕开放域长视频在免训练摘要场景下面临的全局理解不足、单一评分器适应性有限以及段级结果难以直接对接标准评测协议等问题，提出了一种面向视频摘要的多智能体大语言模型推理框架。与第三章基于层级语义聚合与相关性匹配的技术路线不同，本章以当前工程主链路为基础，将视频摘要过程组织为“视频分段与段级描述生成、Planner 全局规划、多专家协同评分、记忆增强时序建模以及帧级映射与标准评测”五个相互衔接的处理环节，从而把原始视频压缩问题转化为可解释的段级协同推理问题。
+
+具体而言，本文首先利用分段机制将长视频重组为若干推理单元，并借助视觉语言模型生成段级多模态描述；在此基础上，由 Planner Agent 从全局范围内推断视频主题、生成全局摘要并动态分配专家权重，再由 Story、Visual、Emotion 与 Information 四类 Expert Agent 对各片段的重要性给出维度化判断；随后，系统通过轻量记忆机制将前序片段语义注入后续评分过程，并将段级最终分数映射到原始采样帧序列，结合归一化、平滑与 knapsack 摘要构造流程生成满足公开数据集协议的最终摘要结果。由此，第四章形成了一个从多模态描述、智能体协同推理到帧级评测输出的完整闭环。
+
+在实验验证方面，当前仓库内已归档结果表明，本章方法能够在 SumMe 与 TVSum 两个标准数据集上形成稳定的公开基准表现。其中，DeepSeek 后端在 8 段划分并采用平滑评测变体时，在 SumMe 上取得了 $51.89\%$ 的已核验 Mean $F_1$；在 16 段划分且采用 raw 变体时，在 TVSum 上取得了 $52.25\%$ 的已核验 Mean $F_1$。进一步的设置级消融说明，分段粒度与后处理策略会对不同数据集产生不同影响：SumMe 更受益于相对较粗的分段和轻量平滑，而 TVSum 更受益于更细粒度的片段建模。结合代表性案例分析还可以看到，当前方法能够在教程类视频中突出关键步骤，在景观类视频中抑制重复视角，并在 vlog 类视频中保留更具事件代表性的片段，从而体现出较好的跨类型适应能力与推理可解释性。
+
+总体来看，本章从当前实际可运行的代码实现出发，完成了多智能体视频摘要框架的建模、实现路径抽象与实验分析，验证了以 Planner 为核心、以多专家协同推理为主体、以帧级映射和标准协议评测为落点的 training-free 视频摘要路线具有可行性。上述工作不仅为本文关于大语言模型驱动视频摘要的研究提供了第二条技术路径，也为下一章对全文工作的整体归纳与进一步讨论奠定了基础。
+
