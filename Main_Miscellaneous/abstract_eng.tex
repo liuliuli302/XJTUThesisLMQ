@@ -1,31 +1,12 @@
 
 % !TeX root = ../main.tex
 \begin{englishabstract}
+With the explosive growth of online video content, automatically producing concise yet semantically faithful summaries from long videos has become a fundamental problem in video understanding. Conventional video summarization methods either rely heavily on low-level visual features, which are insufficient for modeling high-level semantics, or depend on supervised learning pipelines that require costly human annotations and often generalize poorly to open-domain scenarios. To address these limitations, this thesis investigates training-free video summarization and develops a unified framework driven by large language models and multi-agent collaboration.
 
-    The rapid advancement of digital technologies has resulted in an overwhelming
-    surge of video content, thereby creating an urgent demand for efficient
-    video summarization techniques to manage and extract relevant information. Existing
-    approaches are often overly complex and computationally intensive,
-    highlighting the necessity for lightweight solutions that are more practical
-    and user-friendly in real-world applications.
+A hierarchical semantic summarization method is first introduced to overcome the weak topic awareness of purely visual similarity-based approaches. The method structures videos into semantic units, generates frame-level descriptions, aggregates them into scene-level and video-level textual representations, and estimates frame importance through multi-granularity semantic relevance modeling. By jointly considering global thematic consistency and local visual evidence, the summarization process is reformulated from feature selection into semantic understanding and semantic matching. Building on this idea, a multi-agent large language model inference framework is further proposed for complex long-video summarization, where a single scorer is often inadequate for jointly capturing narrative progression, visual saliency, emotional intensity, and information density. In this framework, videos are segmented into temporal units and converted into segment-level multimodal captions. A Planner agent infers the video theme, produces a global summary, and assigns dynamic weights to specialized experts. Story, Visual, Emotion, and Information agents then collaboratively assess segment importance from complementary perspectives. A lightweight memory mechanism is incorporated to preserve temporal coherence, and segment scores are mapped back to frame-level predictions for normalized evaluation and knapsack-based summary generation under standard protocols.
 
-    To address these limitations, we propose a novel Training-Free approach that
-    leverages Multimodal Large Language Models (MLLMs) with a segment-wise similarity
-    contrast mechanism. This framework utilizes the generalization strength of
-    MLLMs to evaluate video frames, and further refines the assessment through cross-modal
-    similarity between image and text features, significantly reducing the
-    architectural complexity and computational cost of the model.
+Experiments on the public SumMe and TVSum benchmarks demonstrate that the proposed methods achieve stable and competitive performance without any task-specific training. The hierarchical semantic method attains F1 scores of 48.3\% on SumMe and 60.7\% on TVSum. Under verified settings, the multi-agent framework reaches a mean F1 of 51.89\% on SumMe and 52.25\% on TVSum. Ablation studies further confirm the effectiveness of hierarchical caption aggregation, semantic scoring, multi-expert collaboration, segment granularity selection, and post-processing strategies. The results indicate that combining the general semantic reasoning capability of large language models with structured multi-agent cooperation can substantially improve topic consistency, interpretability, and open-domain adaptability in training-free video summarization, providing a practical and extensible technical path for future research.
 
-    Furthermore, our method, \textbf{T}raning-\textbf{F}ree \textbf{V}ideo
-    \textbf{S}ummarization \textbf{N}etwork (\textbf{TFVSN}), first directly
-    estimates the importance scores of video frame sequences using MLLMs; Second,
-    it generates textual captions and corresponding text features through Blip2,
-    which are then compared with visual features from video frames. The
-    similarity results serve to enhance the final importance scoring. Our experimental
-    results demonstrate that our method achieves performance comparable to unsupervised
-    approaches, and even surpasses some supervised methods on certain datasets, which
-    highlights the potential of Training-Free architectures for video-related tasks.
-
-    \englishkeywordstype{Video summarization; Multimodal LLMs; Training-free; Cross-modal alignment; Semantic similarity}{Application Fundamentals}
+\englishkeywordstype{Video summarization; Multimodal LLMs; Training-free; Cross-modal alignment; Semantic similarity; Agents}{Application Fundamentals}
 
 \end{englishabstract}
