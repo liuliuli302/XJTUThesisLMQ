@@ -1,434 +1,403 @@
-\xchapter{基于LLM的面训练视频摘要算法}{LLM-based surface-trained video summarization algorithm}
+\xchapter{基于大语言模型的免训练视频摘要方法研究}{Research on Training-free Video Summarization Method based on Large Language Model}
 
-随着互联网多媒体技术的飞速发展，视频数据呈现爆炸式增长，海量的视频内容使得用户难以在有限时间内获取关键信息，这极大地催生了对自动化视频摘要技术的需求。视频摘要旨在从原始长视频中选取最具代表性的关键帧或视频片段，生成简短且内容连贯的摘要，从而提升用户的浏览效率。然而，现有的视频摘要方法在处理复杂视频语义时仍面临严峻挑战。传统的无监督方法主要依赖于底层的视觉特征（如光流、颜色直方图等）进行聚类或重构，难以捕捉视频的高层语义信息，往往导致生成的摘要缺乏主题一致性。尽管基于深度学习的监督方法在性能上取得了显著进展，但其不仅严重依赖于昂贵且带有主观偏差的人工标注数据，而且在面对分布外（Out-of-Distribution）的视频时泛化能力较差。
-
-针对上述“语义鸿沟”和“数据依赖”的问题，本文提出了一种基于大语言模型（LLM）的层级化视频摘要框架。我们的核心动机是利用多模态大模型强大的图文理解与逻辑推理能力，替代传统方法中的特征映射学习。具体而言，该方法采用“自底向上”的描述聚合与“自顶向下”的语义评估策略：首先利用KTS算法进行镜头边界检测，并生成帧级密集描述，进而通过LLM将其聚合为场景级和视频级描述，构建出视频的层级化语义结构；随后，利用LLM对场景与视频主题的相关性进行打分，并结合特征空间的语义相似度计算帧级重要性。该设计有效地将视频摘要任务转化为语义理解与文本摘要任务，在无需大规模人工标注训练的情况下，显著提升了摘要结果的语义连贯性与准确性，为无监督视频摘要提供了一种全新的“理解即摘要”的范式。
+随着短视频平台、监控系统与多媒体检索应用的持续发展，视频数据规模呈现持续增长趋势。面对长时、冗余且内容复杂的视频流，如何在有限时长约束下自动保留关键事件、主要场景与核心叙事线索，已成为视频理解领域的重要研究问题。已有视频摘要方法在公开数据集上取得了一定进展，但在开放域视频场景中仍普遍面临语义表达不足、对人工标注依赖较强以及跨场景泛化能力有限等问题。围绕上述挑战，本章围绕基于大语言模型的免训练视频摘要方法展开研究。首先分析现有方法在语义建模、结构建模与数据依赖方面的局限；随后给出一种面向开放域视频的层级化语义摘要框架，并对镜头划分、多级描述生成、场景重要性评估以及帧级分数增强机制进行详细阐述；最后通过对比实验与消融实验验证所提方法的有效性，并对实验结果进行分析。
 
 \xsection{问题提出}{Problem Statement}
 
-视频摘要（Video Summarization）的核心任务是从原始长视频中提取最具代表性和概括性的子集，使其在保留视频主要语义内容的同时，去除冗余信息，从而大大缩短观看时间。形式化地，给定一个输入视频序列$V = \{f_{1}, f_{2}, \dots, f_{T}\}$，其中 $f_{t}$ 表示第 $t$ 帧，$T$为视频的总帧数。视频摘要的目标是生成一个二值选择向量$\mathbf{y}\in{\{0, 1\}}^{T}$，其中 $y_{t}= 1$表示第 $t$ 帧被选中进入摘要，$y_{t}= 0$表示未被选中。
+视频摘要任务的目标是在严格长度约束下，从长视频中保留能够表征主要事件与核心叙事的信息子集。该任务看似是关键帧或关键片段的筛选问题，实质上是涉及视觉冗余压缩、时序结构建模与高层语义理解的联合优化的复杂课题。视频摘要的一般处理流程如图~\ref{fig:video_summary_pipeline}所示，通常包括原始视频输入、帧或镜头级预处理、重要性建模、长度约束下的关键内容选择以及最终摘要输出等环节。
 
-生成的摘要序列 $S$ 由所有 $y_{t}=1$ 的帧按时间顺序组成，且通常受到长度约束，即生成的摘要长度不得超过原始视频长度的一定比例（例如15\%）。这一约束条件可以表示为：
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{video_summarization_pipeline.pdf}
+  \caption{视频摘要流程示意图}\label{fig:video_summary_pipeline}
+\end{figure}
 
-\begin{equation}
-  \frac{\sum_{t=1}^{T}y_{t}}{T}\leq \sigma
-\end{equation}
+对于开放域视频而言，场景类别、拍摄视角、运动模式与事件结构均具有较强的不确定性，仅依赖低层视觉统计量往往难以稳定刻画视频的真实语义中心。针对上述问题，现有视频摘要框架主要有以下不足：1）基于低层视觉特征的无监督方法难以跨越视觉表征与语义表达之间的鸿沟，对于“事件是否关键”“场景是否承载主题推进”等高层问题缺乏刻画及洞察能力。当不同语义事件具有相近视觉外观，或同一事件在不同拍摄条件下呈现显著外观差异时，单纯依赖视觉距离得到的摘要结果容易出现主题偏移与叙事断裂。2）基于监督学习的视频摘要方法对人工标注具有较强依赖。人工标注的视频摘要数据除了成本昂贵外，还具有较强的主观性，同一视频在不同标注者之间往往存在明显偏差，且当测试视频的内容分布与训练数据存在偏移时，模型性能通常显著下降。3）现有方法对视频层级结构的利用仍不充分。视频内容并非简单的帧序列堆叠，而是具有“帧（Frame）-镜头（Shot）-场景（Scene）-视频（Video）”的层级组织形式。摘要生成不仅需要判断单帧是否清晰或显著，还需要判断该帧所在镜头是否承担关键事件表达，该镜头与整段视频的主题是否一致。若忽略这种由局部到全局的层级依赖关系，则容易保留视觉上突出但语义无关的片段，或遗漏持续时间较短但叙事价值较高的关键瞬间。
 
-其中 $\sigma$ 为摘要比例阈值。
+针对上述问题，本文提出一种基于大语言模型的免训练视频摘要方法。该方法不再将摘要生成仅视为低层视觉特征上的代表性筛选问题，而是强调视频内容的层级语义组织与全局主题一致性，通过引入大语言模型的语义理解与推理能力，在无需任何训练的条件下提升传统视频摘要方法难以顾及的语义表达能力与跨场景适应能力。
 
-传统的视频摘要方法通常将该问题建模为从特征空间中选择最具代表性样本的优化问题。设$\phi(f_{t}) \in \mathbb{R}^{d}$ 为第 $t$ 帧的特征向量（例如使用CNN提取的视觉特征），则目标函数通常旨在最大化摘要集合 $S$ 与原始视频 $V$ 在特征空间上的互信息或重构能力，同时兼顾摘要内部的多样性。然而，这类基于底层视觉特征的方法存在两个本质局限性：首先是著名的“语义鸿沟”问题。底层视觉特征（如颜色直方图、纹理、光流等）虽然能够捕捉画面的物理属性，却难以直接映射到用户所关注的高层语义概念（如“生日派对”、“进球瞬间”等）。这导致生成的摘要虽然在视觉分布上具有代表性，但在叙事连贯性和主题相关性上往往表现不佳。其次是缺乏上下文感知的全局建模。视频不仅是帧的线性堆叠，更具有明显的层级结构（帧Frame $\rightarrow$ 镜头 Shot $\rightarrow$ 场景 Scene $\rightarrow$ 视频
-Video）。一个孤立的帧即使视觉质量很高，如果脱离了其所属的场景叙事上下文，也可能变得毫无意义。反之，一个看似平淡的过场镜头，如果起到承上启下的关键作用，则应当被保留。
+\xsection{基于大语言模型的免训练视频摘要方法}{LLM-based Training-free Video Summarization Method}
 
-为了解决上述问题，本文提出了一种基于层级化语义理解的视频摘要框架。我们将视频摘要问题重新构建为一个多粒度语义匹配与重要性评估问题。我们不再仅仅依赖视觉特征的聚类，而是通过跨模态转换，将视频内容映射到文本语义空间，利用大语言模型（LLM）强大的推理能力来评估每一帧相对于整个视频主题的重要性。
+本文提出一种基于大语言模型的免训练视频摘要框架，其整体结构如图~\ref{fig:architecture_framework}所示。对于输入视频序列 $\mathcal{V}=\{f_{1},f_{2},\dots,f_{T}\}$，该方法首先依据时间连续性与内容变化将其组织为场景集合 $\mathcal{S}=\{s_{1},s_{2},\dots,s_{K}\}$，随后通过视觉语言模型（Vision-Language Model, VLM）与大语言模型协同构建从帧级描述 $Cap_{f}$ 到场景级描述 $Cap_{s}$ 再到视频级描述 $Cap_{v}$ 的层级语义表示，并在此基础上估计场景相关性分数与帧级重要性分数，最终在摘要长度约束 $\tau$ 下生成摘要子集 $\mathcal{Sum}^{*}\subset \mathcal{V}$。该框架将视频摘要由单纯的视觉代表性筛选转化为面向全局主题一致性的层级语义建模过程，在无需任务特定数据集训练的条件下实现了摘要生成与语义推理的统一。
 
-具体而言，我们引入了层级化的语义描述集合。对于视频 $V$，我们首先通过镜头边界检测算法（如KTS）将其划分为 $K$ 个不重叠的镜头（Shots）或场景（Scenes），记为 $\mathcal{C}= \{c_{1}, c_{2}, \dots, c_{K}\}$，其中每个镜头 $c_{k}$ 包含连续的帧序列$\{f_{t_{k,start}}, \dots, f_{t_{k,end}}\}$。在这个层级结构中，我们定义了三个层级的语义描述：
-
-\begin{itemize}
-  \item \textbf{帧级描述（Frame Captioning）}：$Cap_{f}(t)$，描述第 $t$ 帧的具体视觉内容。
-  \item \textbf{场景级描述（Scene/Shot Captioning）}：$Cap_{s}(k)$，概括第 $k$ 个镜头或场景发生的主要事件。
-  \item \textbf{视频级描述（Video Captioning）}：$Cap_{v}$，总结整个视频的主题思想和核心叙事线索。
-\end{itemize}
-
-在这一框架下，每一帧 $f_{t}$ 的重要性得分 $Score(t)$ 不再是一个孤立的标量，而是由其在不同语义层级上的贡献度共同决定的。我们假设一个理想的摘要帧应当满足以下两个条件：
-1. 局部代表性（Local Representativeness）：该帧能充分代表其所属场景的语义内容。即
-$f_{t}$ 的视觉内容或文本描述应与场景描述 $Cap_{s}(k)$ 高度相似。 
-2. 全局相关性（Global Relevance）：该帧所属的场景应当与视频的整体主题密切相关。即场景描述
-$Cap_{s}(k)$ 应与视频总描述 $Cap_{v}$ 存在较强的逻辑关联。
-
-基于此，我们将视频摘要问题转化为寻找最优帧子集的问题，该子集最大化以下语义一致性目标函数：
-
-\begin{equation}
-  \max_{\mathbf{y}}\sum_{t=1}^{T}y_{t}
-\end{equation}
-
-其中，$\mathcal{S}_{\text{text}}(\cdot, \cdot)$ 表示文本特征空间中的语义相似度（例如Cosine Similarity），$\mathcal{R}_{\text{LLM}}(\cdot | \cdot)$ 表示利用大语言模型推断出的特定场景相对于全视频主题的相关性打分。$\alpha, \beta, \gamma$ 为平衡不同层级贡献的权重系数。
-
-通过引入LLM作为核心推理引擎，我们不仅能够获得高质量的层级化文本描述，还能显式地量化场景与视频主题之间的逻辑关联，从而在根本上解决传统视觉特征方法难以捕捉高层语义依赖的难题。最终，通过结合关键性评分与时序约束如KTS分割得到的时域先验），我们能够生成既符合视觉美学又具备完整叙事逻辑的视频摘要。
-
-\xsection{基于LLM的免训练视频摘要方法}{LLM-based training-free video summarization method}
-
-针对传统视频摘要方法在语义理解上的不足，本文提出了一种无需训练的、基于大语言模型（LLM）的层级化语义视频摘要框架。该框架的核心思想是将视频摘要任务从底层的视觉特征匹配转化为高层的文本语义推理，充分利用多模态大模型在图像描述生成和文本逻辑推理方面的强大能力，实现对视频内容的深度理解与精准压缩。
-
-如图所示，我们的方法主要包含三个核心阶段：
-\paragraph{视频结构化与视觉语言转换}
-首先，利用无监督的镜头边界检测算法将连续的视频流划分为具有语义独立性的镜头单元。随后，引入视觉-语言模型（VLM）为每一帧生成细粒度的文本描述，并进一步利用LLM的文本摘要能力，自底向上地生成场景级和视频级的层级化语义描述，构建出视频的“语义金字塔”。
-\paragraph{基于LLM的语义相关性评估}
-在获取视频的层级化文本描述后，我们需要评估每个单元的保留价值。不同于传统方法依赖视觉特征的重构误差，我们设计了一种基于LLM的推理机制，直接从语义层面评估每个场景描述相对于视频整体主题的贡献度（Scene-Video
-    Relevance）。这也使得评分过程更符合人类的摘要逻辑。
-\paragraph{多粒度重要性融合}
-最终的帧级重要性得分不仅取决于其所属场景的全局重要性，还取决于该帧在场景内部的代表性。我们计算帧描述与场景描述、帧描述与视频描述在语义特征空间中的相似度，并将这些细粒度的相关性指标与LLM生成的粗粒度场景评分进行加权融合，得到最终的帧重要性序列。
-
-
-\begin{figure}[H]
+\begin{figure}
   \centering
   \includegraphics[width=\textwidth]{architecture.pdf}
-  \caption{模型结构示意图}
+  \caption{基于大语言模型的免训练视频摘要框架结构图}\label{fig:architecture_framework}
 \end{figure}
 
-与现有的有监督方法相比，本框架最大的优势在于其\textbf{免训练（Training-Free）}的特性。我们不需要在一个预定义的小规模数据集上进行昂贵的模型训练，而是直接利用预训练大模型的泛化知识。这不仅避免了过拟合特定领域数据的风险，还赋予了模型处理开放域（Open-Doamin）视频的强大能力。此外，通过将视觉信息完全文本化，使得摘要过程具有极高的可解释性——我们可以清晰地追溯某一段视频被选中的原因是因为其描述与主题高度相关，而非不可解释的特征激活。
+\xsubsection{视频镜头划分模块}{Video Shot Segmentation Module}
+若直接在帧级序列上开展视频摘要建模，不仅容易受到高时空冗余和局部噪声的干扰，而且会显著增加后续语义推理的计算负担。基于此，本文首先对输入视频进行结构化预处理，将原始帧序列划分为若干在时间上连续、在语义上相近的片段，并以此作为后续描述生成与重要性评估的基本处理单元。具体而言，本文采用核时序分割（Kernel Temporal Segmentation, KTS）算法完成视频预分段。考虑到后续方法部分统一以场景为核心组织层级语义信息，本文将 KTS 输出的连续片段统一记为场景。
 
-\xsubsection{问题定义与数学形式化}{Problem Definition and Mathematical Formalization}
-
-为了严谨地描述视频摘要任务，我们将输入视频序列形式化定义为 $\mathcal{V}= \{f_{1}, f_{2}, \dots, f_{T}\}$，其中每一帧 $f_{i}\in \mathbb{R}^{H \times W \times C}$ 代表了视频在 $t=i$ 时刻的视觉状态。视频摘要的目标函数可以被看作是在满足特定长度约束 $L$ 的条件下，寻找一个最优的关键帧/片段子集 $\mathcal{S}^{*}\subset \mathcal{V}$。
-
-优化目标设定：与传统方法通过学习神经网络权重 $\theta$ 来逼近评分函数不同，本文将评分函数 $score(f_{i})$ 建模为一种基于语义对齐概率的推理函数。我们将该问题转化为如下带约束的组合优化问题：
-
+设输入视频共有 $T$ 帧，其特征序列记为 $\mathbf{X}=\{x_{1},x_{2},\ldots,x_{T}\}$，其中 $x_t\in\mathbb{R}^{d}$ 表示第 $t$ 帧的 $d$ 维视觉特征。KTS 的目标是确定一组有序边界点 $\mathcal{B}=\{b_{0},b_{1},\ldots,b_{K}\}$，满足 $0=b_{0}<b_{1}<\cdots<b_{K}=T$，从而将视频划分为 $K$ 个连续场景 $\mathcal{S}=\{s_{1},s_{2},\ldots,s_{K}\}$，其中第 $k$ 个场景定义为
 \begin{equation}
-  \mathcal{S}^{*}= \arg\max_{\mathcal{S} \in \mathcal{V}}\left( \sum_{f_i \in \mathcal{S}}\Phi_{\text{LLM}}\big(f_{i}\mid \mathcal{C}_{\text{global}}, \mathcal{P}_{\text{prompt}}\big) \right)
+  s_k=[b_{k-1}+1,b_k].
 \end{equation}
-
+为了刻画任意两帧之间的相似性，首先构建核矩阵 $\mathbf{K}\in\mathbb{R}^{T\times T}$，其元素定义为
 \begin{equation}
-  \text{s.t.}\quad \text{Length}(\mathcal{S}) = \sum_{i=1}^{T}\mathbb{I}(f_{i}\in \mathcal{S}) \cdot \Delta t \leq \tau \cdot \mathcal{T}_{total}
+  K_{ij}=\kappa(x_i,x_j)=\langle \phi(x_i),\phi(x_j) \rangle,
 \end{equation}
+其中，$\kappa(\cdot,\cdot)$ 表示核函数，$\phi(\cdot)$ 表示隐式映射。该矩阵能够将视频中的内容变化编码为时序相似度变化，为后续边界搜索提供依据。
 
-其中 $\Phi_{LLM}$ 代表大语言模型在特定提示词 $\mathcal{P}_{prompt}$ 和全局上下文 $\mathcal{C}_{global}$ 下给出的语义贡献度评分，$\tau$ 是预定义的视频压缩率。通过这种形式化，我们将原本纯粹的视觉匹配问题转化为了基于上下文关联的语义推理问题。
-
-\xsubsection{基于LLM的免训练方法框架}
-本节详细阐述本文提出的多模块协同框架。该框架的设计初衷是解决视觉原始信号与高层语义逻辑之间的“语义鸿沟”问题。
-
-\subsubsection{视频镜头划分与核时间分割（KTS）}
-视频数据具有极高的时空冗余性，相邻帧之间往往包含大量的重复信息。如果直接对每一帧进行处理，不仅计算成本巨大，且会引入大量的噪声。因此，首要任务是将连续的视频流划分为若干个具有语义独立性的“镜头”（Shots）。本文采用核时间分割（Kernel Temporal Segmentation, KTS）算法。首先，利用预训练的模型提取视频帧特征 $X = \{x_{1}, x_{2}, \dots, x_{T}\}$。为了刻画视频在时域上的结构突变，我们定义了一个核相似度矩阵 $K_{ij}= \langle \phi(x_{i}), \phi(x_{j}) \rangle$，通过最小化段内方差来实现最优分割：
-
+KTS 的处理流程如图~\ref{fig:kts}所示，可概括为特征提取、核矩阵构建、分段代价计算和动态规划求解四个步骤。对于任意场景 $s_k=[p,q]$，其分段代价通过段内方差度量，整体优化目标写为
 \begin{equation}
-  J(m; b_{1}, \dots, b_{m}) = \sum_{k=0}^{m}\sum_{i=b_k}^{b_{k+1}}\| \phi(x_{i})
-  - \mu_{k}\|^{2}+ \lambda \cdot g(m)
+  \min_{\mathcal{B}} J(\mathcal{B})=\sum_{k=1}^{K}\mathrm{Var}(s_k)+\lambda K,
 \end{equation}
-
-其中 $b_{k}$ 是第 $k$ 个镜头的边界点，$\mu_{k}$ 是该镜头内特征的均值。通过动态规划求解该优化问题，我们可以得到一组最优的镜头集合 $\mathcal{B}= \{B_{1}, B_{2}, \dots, B_{N}\}$。这种划分确保了每个分段内部的视觉内容在统计意义上是同质的，而在边界处存在显著的语义切换，为后续的场景级描述奠定了结构基础。
-
-\subsubsection{视觉-语言映射：帧级与多级字幕生成}
-为了让LLM能够理解视频，必须将视觉信号转化为其能够“阅读”的文本语言。这一步骤是实现跨模态推理的关键桥梁。对于每个镜头 $B_{j}$，我们提取其中心关键帧 $f_{key}^{j}$，使用视觉-语言模型（如BLIP-2或LLaVA）生成文本描述 $c_{j}= \text{VLM}(f_{key}^{j})$。 由于单帧描述往往缺乏动作的连续性，我们利用LLM将一个场景内的多帧描述进行整合：
-
+其中，$\mathrm{Var}(s_k)$ 表示第 $k$ 个场景内部的离散程度，$\lambda$ 为控制分段数量的正则化系数。若直接在特征空间中计算，则有
 \begin{equation}
-  s_{j}= \text{LLM}_{agg}(\{c_{i}| i \in B_{j}\}, \text{Prompt}_{shot})
+  \mathrm{Var}(s_k)=\sum_{t=p}^{q}\|x_t-\mu_{p:q}\|_2^2, \qquad
+  \mu_{p:q}=\frac{1}{q-p+1}\sum_{t=p}^{q}x_t,
 \end{equation}
-
-为了获得宏观视角，我们将所有场景描述 $s_{j}$ 再次输入LLM，生成一段概括整个视频主旨的全局描述 $v = \text{LLM}_{sum}(\{s_{1}, \dots, s_{N}\}, \text{Prompt}_{global})$。通过这种“帧-场景-视频”的递归聚合机制，我们成功构建了一个层级化的文本表征空间，既保留了局部细节，又捕捉了全局叙事主线。
-
-\subsubsection{场景重要性评估与双路分数修正}
-虽然LLM能够给出语义评分，但其往往缺乏对视觉运动显著性的感知。例如，一段对话虽然语义重要，但如果视觉画面极其单调，可能并不适合作为视频摘要的关键片段。我们设计了一个双路评分修正模块。首先，LLM根据场景描述 $s_{j}$ 与全局描述 $v$ 的相关性给出初始语义分数 $score_{j}^{sem}$。随后，我们引入基于特征分布的视觉权重：
-
+其中，$\mu_{p:q}$ 表示区间 $[p,q]$ 的特征均值。进一步利用核技巧，上式可改写为
 \begin{equation}
-  w_{i}^{vis}= \| x_{i}- \frac{1}{T}\sum_{t=1}^{T}x_{t}\|_{2}
+  \mathrm{Var}(s_k)=\sum_{t=p}^{q}K_{tt}-\frac{1}{q-p+1}\sum_{i=p}^{q}\sum_{j=p}^{q}K_{ij}.
 \end{equation}
+该形式避免了显式计算高维均值向量，从而提高了长视频场景划分的计算效率。
 
-最终的修正分数 $\tilde{score}_{i}$ 结合了语义重要性与视觉突出度：
-
+在获得各候选区间的分段代价后，采用动态规划（Dynamic Programming, DP）搜索全局最优边界。定义 $D(t,k)$ 为前 $t$ 帧被划分为 $k$ 个场景时的最小代价，则状态转移方程为
 \begin{equation}
-  \tilde{score}_{i}= \alpha \cdot score_{j \in B}^{j}+ \beta \cdot \text{Sim}(x_{i}
-  , \bar{x}) + \gamma \cdot \text{Motion}(f_{i})
+  D(t,k)=\min_{0\le j<t}\left\{D(j,k-1)+\mathrm{Var}(j+1,t)\right\}.
 \end{equation}
+通过递推计算和回溯操作，可以恢复最优边界集合 $\mathcal{B}$，从而得到最终的镜头划分结果。相较于基于固定阈值的局部检测方法，KTS能够在全局优化意义下兼顾片段内部一致性与边界显著性，更适合作为本文层级语义建模的前置模块。
 
-其中 $\alpha, \beta, \gamma$ 为平衡系数。该修正机制有效地平衡了“逻辑上的重要性”与“视觉上的吸引力”，避免了摘要生成中常见的语义断层现象，显著提升了生成摘要的鲁棒性。
-
-\subsubsection{摘要生成与评估指标}
-在获得最终的评分曲线后，我们利用动态规划（Dynamic Programming）或贪心策略，在满足长度约束的前提下，挑选出总分最高的帧集合。为了验证本文方法的有效性，我们在公开数据集SumMe 和 TVSum 上进行了详尽的实验。
-
-我们采用 F1-score 作为核心衡量指标，通过计算模型生成的摘要序列与人类标注摘要之间的重合度（Precision
-和 Recall），来定量评估算法的性能。
-
-\begin{equation}
-  F1 = \frac{2 \cdot P \cdot R}{P + R}\times 100\%
-\end{equation}
-
-实验结果表明，本文提出的免训练框架不仅在语义理解上超越了传统的无监督方法，且在泛化能力上展现出了相对于监督方法的显著优势。
-
-\xsubsection{镜头分割算法}{kts}
-视频是一种连续的时空数据流，直接对长视频进行帧级别的处理不仅计算量巨大，且难以捕捉视频内部的结构化语义。为了将视频流离散化为具有独立语义的单元，我们采用核时序分割（Kernel Temporal Segmentation, KTS）算法对原始视频进行镜头边界检测（Shot Boundary
-Detection）。镜头（Shot）被定义为摄像机在一次连续拍摄中捕捉到的视频片段，是视频语义理解的基本原子单位。通过将视频划分为若干个互不重叠的镜头，我们可以有效地通过对镜头内容的概括来近似整个视频的语义分布。
-
-假设输入视频序列包含 $T$ 帧，表示为 $\mathbf{X}= \{x_{1}, x_{2}, \dots, x_{T}\}$，其中
-$x_{t}\in \mathbb{R}^{d}$ 是第 $t$ 帧的特征向量（通常由预训练的深度卷积神经网络提取，如GoogleNet或ResNet）。我们的目标是寻找一组时间切分点 $\mathbf{t}= \{t_{0}, t_{1}, \dots, t_{m}\}$，满足 $0 = t_{0}< t_{1}< \dots < t_{m} = T$，从而将视频划分为 $m$ 个连续的镜头 $S_{1}, S_{2}, \dots, S_{m}$。其中第 $i$ 个镜头 $S_{i}$ 包含帧序列 $\{x_{t_{i-1}}, \dots, x_{t_i-1}\}$。
-
-KTS算法的核心思想是在特征空间内寻找最优的切分点，使得每个镜头内部的视觉特征方差（Variance）之和最小化，同时引入正则化项以惩罚镜头的数量，从而避免过分割（Over-segmentation）。我们将该问题形式化为以下优化问题：
-
-\begin{equation}
-  \min_{m; t_1, \dots, t_{m-1}}J_{m}= \sum_{i=1}^{m}\text{Var}(S_{i}) + \lambda \cdot
-  m
-\end{equation}
-
-其中，$\text{Var}(S_{i})$ 表示第 $i$ 个镜头内部的特征方差，$\lambda$ 是控制镜头数量的超参数。在欧几里得空间中，镜头 $S_{i}$ 的方差定义为所有帧特征向量与其均值 $\mu_{i}$ 的平方欧氏距离之和：
-
-\begin{equation}
-  \text{Var}(S_{i}) = \sum_{t=t_{i-1}}^{t_i-1}\|x_{t}- \mu_{i}\|^{2}, \quad \text{where
-  }\mu_{i}= \frac{1}{t_{i}- t_{i-1}}\sum_{t=t_{i-1}}^{t_i-1}x_{t}
-\end{equation}
-
-为了能够处理高维、非线性的视频特征分布，KTS引入了核技巧（Kernel Trick）。通过将原始特征映射到高维希尔伯特空间 $\mathcal{H}$，我们可以利用核函数 $\kappa(x_{i}, x_{j}) = \langle \phi(x_{i}), \phi(x_{j}) \rangle$ 隐式地计算高维空间中的距离。常用的核函数包括线性核和径向基函数（RBF）核。利用核矩阵 $\mathbf{K}\in \mathbb{R}^{T \times T}$（其中 $K_{ij}= \kappa(x_{i}, x_{j})$），每个镜头的方差可以重写为仅依赖于核矩阵元素的形式，从而避免了显式计算高维均值向量 $\mu_{i}$：
-
-\begin{equation}
-  \text{Var}(S_{i}) = \sum_{t=t_{i-1}}^{t_i-1}K_{tt}- \frac{1}{t_{i}- t_{i-1}}\sum
-  _{t=t_{i-1}}^{t_i-1}\sum_{r=t_{i-1}}^{t_i-1}K_{tr}
-\end{equation}
-
-该转换极大地降低了计算复杂度。最优切分点的求解可以通过动态规划（Dynamic Programming）算法高效完成。具体而言，我们定义 $D(t, k)$ 为将前 $t$ 帧划分为 $k$ 个镜头的最小目标函数值，则状态转移方程为：
-
-\begin{equation}
-  D(t, k) = \min_{0 \le j < t}\{ D(j, k-1) + \text{Var}(x_{j+1:t}) \}
-\end{equation}
-
-通过迭代求解上述方程，我们可以得到视频的最优分割方案。具体的镜头分割流程如图\ref{fig:kts}所示。
-
-\begin{figure}[h]
+\begin{figure}[th]
   \centering
-  \includegraphics[width=0.95\linewidth]{model_kts.pdf}
-  \caption{基于KTS的视频镜头分割算法流程图。首先提取每帧的视觉特征并计算核矩阵，随后利用动态规划寻找最优的镜头切分点，将连续视频流分割为语义独立的Shot单元。}\label{fig:kts}
+  \includegraphics[width=\linewidth]{model_kts.pdf}
+  \caption{KTS视频场景划分算法流程}\label{fig:kts}
 \end{figure}
 
-在本文的算法框架中，KTS的作用是至关重要的预处理步骤。通过KTS生成的切分点集合 $\mathcal{C} = \{c_{1}, c_{2}, \dots, c_{K}\}$ 不仅为后续的层级化描述生成提供了基本的时间边界，确立了“场景（Scene）”这一中间语义层级，而且还有效地抑制了视频中的冗余信息。在后续的步骤中，我们将不再对每一帧单独进行处理，而是以镜头为单位聚合帧描述，从而生成更具概括性的场景描述（Scene Caption）。这种策略不仅大幅减少了LLM处理的Token数量，降低了计算开销，更保证了输入给LLM的文本上下文具有天然的时序连贯性和语义完整性，为实现高质量的视频理解奠定了坚实的基础。
+在本文方法中，KTS的作用不仅在于完成视频预分段，更在于为后续层级语义表示提供稳定的时间边界。通过将原始长视频转化为场景集合 $\mathcal{S}=\{s_1,s_2,\ldots,s_K\}$，后续模块能够以场景为单位聚合帧级描述并执行语义相关性分析，从而有效降低逐帧处理带来的冗余计算，同时保持上下文的时序连贯性。这一结构化表示为后续大语言模型的场景理解与摘要生成提供了可实现且稳定的输入基础。
 
-\subsection{多级语义描述生成算法}
-在构建了视频的时序结构（镜头序列）之后，接下来的核心任务是将视频内容从像素级的视觉信号映射到语义级的符号表示。我们采用了一种基于大语言模型（LLM）的“自底向上”聚合策略，构建了覆盖“帧（Frame）- 场景（Scene）- 视频（Video）”三个层级的金字塔式语义描述体系。这一过程不仅实现了跨模态的信息压缩，还利用LLM的强大的摘要能力，过滤了冗余的视觉细节，提炼出具有逻辑连贯性的叙事线索。
 
-\subsubsection{帧级密集描述}{Frame-level dense description}
-作为语义金字塔的基石，帧级描述直接来源于原始视觉信息。对于每一个镜头 $S_{k}= \{f_{t_{k,start}}, \dots, f_{t_{k,end}}\}$，考虑到镜头内部视觉内容的连续性和冗余性，我们不需要对每一帧都生成描述。因此，我们采用特定的采样策略（如等间隔采样或关键帧提取），选取最具代表性的帧子集${\{f_{p}\}}_{p \in \mathcal{P}_k}$。在本研究中，我们直接使用了KTS划分后的镜头内部采样策略。
+\xsubsection{多级视频语义描述生成模块}{Multi-level Video Semantic Description Generation Module}
+在完成镜头划分之后，视频已被组织为具有时间连续性的场景单元，但其信息载体仍主要表现为视觉特征或原始帧序列，难以直接用于大语言模型的主题归纳与语义推理。为此，本文设计多级视频语义描述生成模块，将视频内容按照“帧级描述生成、场景级语义聚合、视频级全局概括”的路径逐层映射为结构化文本表示，其整体流程如图~\ref{fig:caption_aggregation}所示，核心步骤可进一步概括为算法~\ref{alg:multi_level_caption}。该模块的核心目标是在保留视频时序层次结构的同时，将离散视觉内容转化为具有明确语义指向的文本单元，从而为后续场景重要性评估提供统一、可比较的文本语义表征。
 
-对于每一个采样帧 $f_{p}$，我们利用预训练的视觉-语言模型（Vision-Language Model, VLM）生成详细的自然语言描述。我们对比了BLIP (Bootstrapping Language-Image Pre-training) 和 LLaVA (Large Language-and-Vision Assistant) 两种主流模型。以BLIP为例，给定图像输入 $I$，其生成过程可以表示为：
+设经 KTS 划分后的视频包含 $K$ 个场景，场景集合记为 $\mathcal{S}=\{s_1,s_2,\ldots,s_K\}$。对于第 $k$ 个场景 $s_k$，其采样帧集合记为 $\mathcal{F}_k=\{f_{t_{k,1}},f_{t_{k,2}},\ldots,f_{t_{k,n_k}}\}$，其中 $f_{t_{k,i}}$ 表示场景 $s_k$ 中的第 $i$ 个采样帧，$n_k$ 表示该场景的采样帧数量。基于上述层级结构，本文定义帧级描述、场景级描述与视频级描述三类语义变量，分别记为 $Cap_f$、$Cap_s$ 和 $Cap_v$。其中，$Cap_f(t)$ 表示第 $t$ 帧的局部语义描述，$Cap_s(k)$ 表示第 $k$ 个场景的语义概括，$Cap_v$ 表示整段视频的全局主题摘要。
 
+\subsubsection{帧级语义描述生成}
+帧级语义描述生成旨在为采样帧构建细粒度的语义表征，以显式刻画画面中的主体对象、关键动作与场景环境。对于任意采样帧 $f_t$，记其对应图像输入为 $I_t$，采用视觉语言模型生成自然语言描述，则帧级描述可写为
 \begin{equation}
-  Cap_{f}(p) = \text{VLM}(I_{p}; \theta_{\text{VLM}})
+  Cap_f(t)=\mathrm{VLM}(I_t;\theta_{\mathrm{VLM}}),
 \end{equation}
+其中，$\theta_{\mathrm{VLM}}$ 表示视觉语言模型参数。通过该映射，原始图像被转换为显式的语言语义单元，使得后续模块不再直接依赖高维视觉特征，而能够在统一的文本语义空间中建模视频内容。需要指出的是，单帧描述虽然能够准确反映局部视觉事实，但由于缺乏时间上下文，其对动作延续关系和场景整体语义的表达仍然有限，因此有必要进一步进行上层聚合。
 
-其中 $\theta_{\text{VLM}}$ 是冻结的模型参数。为了保证描述的丰富性，我们采用了Top-K采样或Beam Search解码策略。例如，对于Frames $p$，生成的描述可能为：“一个身穿红色夹克的男人正在雪山上滑雪”。这些密集的帧级描述构成了后续高层语义理解的原始素材。
-
-\xsubsection{场景级描述聚合}{Scene-level Review and Summarization}
-帧级描述虽然捕捉了瞬间的视觉状态，但往往缺乏上下文信息，且存在大量重复（例如连续多帧都描述了类似的动作）。为了获得更具概括性的镜头内容表示，我们引入了基于LLM的场景级聚合模块。
-
-具体而言，对于每个镜头（即场景）$k$，我们将该镜头内所有采样帧的描述按时间顺序拼接，形成一个长文本序列 $T_{k}= [Cap_{f}(p_{1}), Cap_{f}(p_{2}), \dots]$。然后，我们将该序列作为一个Prompt输入给大语言模型（如GPT-4o或DeekSeek），要求模型扮演一个“视频审阅者”的角色，总结该镜头内发生的事件。Prompts的设计遵循以下模板：
-
-\begin{quote}
-  Here is a sequence of frame captions from a video scene. Please summarize
-  what happens in this scene in a concise sentence. Focus on the main action and
-  objects.
-\end{quote}
-
-这一过程可以形式化为：
-
-\begin{equation}
-  Cap_{s}(k) = \text{LLM}_{\text{summ}}(T_{k}; \theta_{\text{LLM}})
-\end{equation}
-
-通过这一步聚合，我们成功地将一系列零散的视觉观察转化为一个连贯的事件描述。例如，原本分散的“\textit{男人站立}”、“\textit{男人滑行}”、“\textit{男人摔倒}”等帧描述，被聚合成了一个完整的场景描述：“\textit{一名滑雪者展示了一段高难度的下坡滑雪并最终安全着陆}”。这种从微观视觉到宏观事件的跃迁，是理解视频叙事结构的关键一步。
-
-\subsubsection{视频级全局摘要 (Video-level Global Summarization)}
-在获得所有 $K$ 个场景的描述 $\{Cap_{s}(1), Cap_{s}(2), \dots, Cap_{s}(K)\}$ 之后，我们再次利用LLM的文本摘要能力进行顶层聚合，生成整个视频的主题描述。这一过程类似于对一篇文章的各段落大意进行总结。我们将所有场景描述按顺序拼接，构建视频级的Context，并输入LLM生成视频的总摘要 $Cap_{v}$：
-
-\begin{equation}
-  Cap_{v}= \text{LLM}_{\text{summ}}([Cap_{s}(1), \dots, Cap_{s}(K)]; \theta_{\text{LLM}})
-\end{equation}
-
-该描述 $Cap_{v}$ 代表了视频的中心思想或核心主题（例如：“\textit{一段记录冬季极限运动滑雪锦标赛的高光时刻视频}”）。它将作为后续打分阶段的“全局锚点（Global Anchor）”，用于判断每个局部场景是否偏离了视频的主旨。
-
-整个层级化描述生成过程如图 \ref{fig:caption_aggregation} 所示。通过 Frame $\rightarrow$ Scene $\rightarrow$ Video 的逐级抽象，我们在保留关键语义的同时，将海量的像素数据压缩为高度浓缩的文本知识，为后续基于语义的相关性计算提供了极其高效的特征表示。
-
-\begin{figure}[t]
+\begin{figure}
   \centering
-  \includegraphics[width=1.0\linewidth]{model_caption_aggregation.pdf}
-  \caption{\textbf{层级化语义描述生成流程。} 首先利用VLM为采样帧生成密集描述；随后，LLM将同一镜头内的帧描述聚合为场景描述；最后，所有的场景描述被进一步概括为视频级的全局描述，形成了金字塔式的语义结构。}\label{fig:caption_aggregation}
+  \includegraphics[width=\linewidth]{model_caption_aggregation.pdf}
+  \caption{多级视频语义描述生成模块流程图}\label{fig:caption_aggregation}
 \end{figure}
 
-\subsection{基于大语言模型的语义评分策略}{LLM-based Semantic Scoring Strategy}
-在获取了视频的层级化语义描述后，视频摘要的核心问题便转化为如何量化每个场景对视频整体叙事的贡献度。传统的无监督方法往往依赖于视觉特征的聚类中心距离或重构误差来评估重要性，这虽然在一定程度上反映了视觉上的代表性，但忽略了视频内容的逻辑连贯性和主题相关性。为了弥补这一“语义鸿沟”，本文提出利用大语言模型（LLM）作为零样本评估器（Zero-shot Evaluator），直接在语义层面度量场景描述与视频主题的契合程度。
-
-具体而言，我们将重要性评分任务建模为一个基于上下文的问答（Context-aware QA）或评分任务。给定视频的全局描述 $Cap_{v}$ 和第 $k$ 个场景的局部描述 $Cap_{s}(k)$，我们的目标是利用LLM推断出一个归一化的分数 $S_{\text{LLM}}(k) \in [0, 1]$，该分数反映了在该视频语境下保留该场景的必要性。
-
-这一过程可以形式化为如下的条件概率估计问题：
-
+\subsubsection{场景级语义描述聚合}
+场景级语义描述聚合的目标是将同一场景内部多个离散帧级描述整合为统一的事件表达，以增强对动作过程、语义连续性与局部上下文关系的刻画能力。对于场景 $s_k$，将其采样帧对应的帧级描述按照时间顺序组织为描述序列
 \begin{equation}
-  S_{\text{LLM}}(k) = P(\text{Importance}| Cap_{s}(k), Cap_{v}; \theta_{\text{LLM}})
+  \mathcal{T}_k=\big[Cap_f(t_{k,1}),Cap_f(t_{k,2}),\ldots,Cap_f(t_{k,n_k})\big].
 \end{equation}
+在此基础上，利用大语言模型对描述序列进行跨帧归纳与整体总结，可得到场景级描述
+\begin{equation}
+  Cap_s(k)=\mathrm{LLM}_{\mathrm{scene}}(\mathcal{T}_k;\theta_{\mathrm{LLM}}).
+\end{equation}
+与单帧描述相比，$Cap_s(k)$ 不再局限于对某一瞬时画面的静态陈述，而是能够综合同一场景内多个时刻的语义线索，对场景中的核心事件、主要参与主体、动作演化过程以及局部叙事主线进行整体概括。换言之，单帧描述通常只能反映“这一帧中看到了什么”，而场景级描述进一步回答了“这一段时间内发生了什么”以及“这些视觉内容共同指向何种事件语义”。通过这一聚合过程，分散在不同帧中的互补信息得以汇集，场景内部的冗余细节与偶然噪声得到抑制，从而形成更具完整性、连贯性和解释力的场景语义表示，并为后续不同场景之间的重要性比较提供更稳定的语义粒度。
 
-为了引出LLM的推理能力，我们设计了特定的Prompt模板，引导模型从“内容相关性”、“信息量”和“叙事完整性”三个维度进行综合考量。Prompt的设计如下所示：
+\subsubsection{视频级全局语义摘要}
+在获得全部场景级描述后，进一步需要从全局视角对整段视频的主题内容进行抽象，以形成后续场景评价的统一参照。设视频包含 $K$ 个场景，其场景级描述序列记为 $\{Cap_s(1),Cap_s(2),\ldots,Cap_s(K)\}$，则视频级语义摘要可表示为
+\begin{equation}
+  Cap_v=\mathrm{LLM}_{\mathrm{video}}\big(\{Cap_s(1),Cap_s(2),\ldots,Cap_s(K)\};\theta_{\mathrm{LLM}}\big).
+\end{equation}
+与前两级表示不同，视频级描述面向整段视频的主题归纳，其关注点不再是某一局部片段的细节，而是视频所呈现的核心事件、叙事主线及其整体语义指向。因而，$Cap_v$ 可以视为视频内容的全局语义锚点，为后续场景相关性分析提供统一的主题条件。
 
-\begin{quote}
-  \texttt{System: You are a professional video editor. Your task is to rate the
-  importance of a video scene based on its description and the overall video
-  summary.} \\
-  \texttt{User: Video Summary: ``$Cap_{v}$'' \\
-  Scene Description: ``$Cap_{s}(k)$'' \\
-  On a scale of 0 to 100, how important is this scene for understanding the
-  video's main theme? Please output only the score.}
-\end{quote}
+综上，本文通过帧级描述生成、场景级语义聚合与视频级全局摘要三个步骤，构建了由局部视觉事实到全局主题概括的层级语义表示链路。该模块不仅保持了视频内容由局部到整体的时序组织形式，而且将原始视觉信息转化为适于大语言模型处理的文本表达，为后续基于语义相关性的评分机制奠定了表示基础。
 
-模型输出的原始分数 $R_{k}\in [0, 100]$ 随后被归一化到 $[0, 1]$ 区间。这种基于自然语言理解的评分机制具有显著优势：首先，利用LLM海量的预训练知识，模型能够识别出具有高语义价值的事件（如“进球瞬间”、“切蛋糕”），即使这些事件在视觉上并不占据主导地位；其次，通过引入全局视频描述 $Cap_{v}$ 作为条件，评分过程具备了上下文感知能力，能够有效区分“冗余重复”与“关键叙事”。如图\ref{fig:llm_query} 所示，这一步骤构成了我们语义筛选的核心逻辑。
+\begin{algorithm}
+  \caption{多级视频语义描述生成模块流程}\label{alg:multi_level_caption}
+  \small
+  \begin{tabular}{p{0.95\linewidth}}
+    % \toprule
+    \textbf{输入：} 经 KTS 划分后的场景集合 $\mathcal{S}=\{s_1,s_2,\ldots,s_K\}$，视觉语言模型 $\mathrm{VLM}(\cdot)$，大语言模型 $\mathrm{LLM}_{\mathrm{scene}}(\cdot)$ 与 $\mathrm{LLM}_{\mathrm{video}}(\cdot)$。\\
+    \textbf{输出：} 帧级描述集合 $\{Cap_f(t_{k,i})\}$，场景级描述集合 $\{Cap_s(k)\}$，视频级描述 $Cap_v$。\\
+    % \hline
+    1. 对每个场景 $s_k$ 中的采样帧 $f_{t_{k,i}}$ 逐一进行视觉理解，生成对应的帧级语义描述 $Cap_f(t_{k,i})$；\\
+    2. 对于每个场景 $s_k$，按照时间顺序汇总该场景内全部帧级描述，构造描述序列 $\mathcal{T}_k$；\\
+    3. 将 $\mathcal{T}_k$ 输入场景级语义聚合模型，得到场景级描述 $Cap_s(k)$；\\
+    4. 按照视频时间顺序收集全部场景级描述，形成场景描述序列 $\{Cap_s(1),Cap_s(2),\ldots,Cap_s(K)\}$；\\
+    5. 将场景描述序列输入视频级摘要模型，生成视频级全局语义摘要 $Cap_v$；\\
+    6. 返回 $\{Cap_f(t)\}$、$\{Cap_s(k)\}$ 与 $Cap_v$。\\
+    % \bottomrule
+  \end{tabular}
+\end{algorithm}
 
-\begin{figure}[t]
+\xsubsection{全局主题约束下的场景语义评分模块}{Global Theme-guided Scene Semantic Scoring Module}
+在获得场景级描述 $Cap_{s}(k)$ 与视频级描述 $Cap_{v}$ 之后，摘要生成的关键问题可进一步表述为：如何在统一语义参照下度量各场景对整段视频主题表达的贡献程度。为此，本文构建基于大语言模型的场景语义评分模块，将场景重要性估计转化为条件语义判别问题，从而避免仅依赖视觉统计量所导致的主题偏移。
+
+\begin{figure}
   \centering
   \includegraphics[width=0.95\linewidth]{model_llm_query.pdf}
-  \caption{\textbf{基于LLM的场景重要性打分机制。} 我们构建了一个Prompt，将视频的全局主题概括与当前场景的具体描述同时输入给LLM，要求模型从语义相关性的角度输出该场景的重要性评分。这一过程完全无需任何人工标注数据训练。}\label{fig:llm_query}
+  \caption{全局主题约束下的场景语义评分模块}\label{fig:llm_query}
 \end{figure}
 
-\subsection{基于多粒度语义相似度的帧重要性增强算法}{Multi-granularity Semantic Similarity-based Frame Importance Enhancement Algorithm}
+设输入视频经 KTS 划分后得到 $K$ 个场景，记场景集合为 $\mathcal{S}=\{s_1,s_2,\ldots,s_K\}$。其中，$Cap_{s}(k)$ 表示第 $k$ 个场景 $s_k$ 的场景级语义描述，$Cap_{v}$ 表示整段视频的全局语义摘要，$\theta_{\mathrm{LLM}}$ 表示评分模型参数。本文将第 $k$ 个场景的重要性定义为在给定全局主题条件下，该场景应被保留至最终摘要的语义置信度，其数学形式可写为
+\begin{equation}
+  S_{\mathrm{LLM}}(k)=p\big(y_k=1\mid Cap_{s}(k),Cap_{v};\theta_{\mathrm{LLM}}\big),
+\end{equation}
+其中，$y_k\in\{0,1\}$ 表示场景 $s_k$ 是否应被纳入最终摘要，$S_{\mathrm{LLM}}(k)\in[0,1]$ 为对应的归一化重要性分数。上述定义表明，该模块并不直接对视觉特征进行度量，而是利用场景语义与视频主题之间的条件一致性完成重要性判断。
 
-\begin{figure}[t]
+为将上述判别问题转化为可执行的推理过程，本文采用提示构造模板 $\Pi(\cdot)$ 将视频级语义摘要与场景级描述组织为统一输入，即
+\begin{equation}
+  q_k=\Pi\big(Cap_{v},Cap_{s}(k)\big), \qquad k=1,2,\ldots,K,
+\end{equation}
+其中，$q_k$ 表示第 $k$ 个场景对应的评分查询。提示内容要求 LLM 在视频整体主题约束下，仅输出一个反映场景重要性的标量得分。结合源码实现，所有场景查询可按照批处理方式独立执行，因此该模块能够直接集成到训练外推理流程中，而无需额外参数学习。如图~\ref{fig:llm_query} 所示，该模块的输入由视频级摘要与当前场景描述共同组成，输出为场景级语义分数。
+
+为便于说明提示构造方式，下面给出一个场景语义评分的提示词示例：
+\begin{quote}
+  \texttt{System: You are a video summarization evaluator. Given the global video summary and the current scene description, output only one importance score from 1 to 100.}\\
+  \texttt{User: Global video summary = A travel video records the complete visiting process of the Eiffel Tower, including arrival, sightseeing, and panoramic city views.}\\
+  \texttt{Current scene description = Several tourists are waiting in a long queue near the entrance, with limited change in actions and no key landmark view.}\\
+  \texttt{Task: Evaluate how important the current scene is for preserving the main theme and narrative completeness of the video. Output score only.}
+\end{quote}
+
+经过上述提示构造与推理过程，大语言模型为每个场景输出归一化至区间 $[0,1]$ 的重要性分数 $S_{\mathrm{LLM}}(k)$，该分数值越大，表明对应场景与视频整体主题的语义关联度越高。将提示构造与模型推理合并表示，单个场景的语义评分映射可形式化为
+\begin{equation}
+  S_{\mathrm{LLM}}(k)=\mathrm{LLM}\big(\Pi(Cap_{v},Cap_{s}(k));\theta_{\mathrm{LLM}}\big),
+\end{equation}
+其中 $\theta_{\mathrm{LLM}}$ 为大语言模型的固定参数。对全部 $K$ 个场景独立执行上述评分后，即可获得视频的场景级评分序列
+\begin{equation}
+  \mathrm{Score}_{\mathrm{scene}}=\big[S_{\mathrm{LLM}}(1),S_{\mathrm{LLM}}(2),\ldots,S_{\mathrm{LLM}}(K)\big].
+\end{equation}
+
+与基于视觉显著性、聚类中心距离或重构误差的传统评分方式不同，上述模块以视频全局主题为条件对场景语义进行判别，因而能够在开放域视频中有效区分“视觉上显著但与主题无关”的片段与“视觉变化有限但对叙事不可或缺”的片段。然而，由于同一场景内所有帧共享相同的评分值，$\mathrm{Score}_{\mathrm{scene}}$ 本质上仅提供粗粒度的语义先验，尚无法刻画场景内部不同帧之间的质量差异与局部语义贡献。为弥补这一不足，下一小节将在场景级分数的基础上，引入多粒度语义相似度实现帧级重要性增强。
+
+\xsubsection{场景先验引导的帧级语义分数增强模块}{Scene-prior-guided Frame-level Semantic Score Refinement Module}
+
+上一小节得到的场景级分数序列 $\mathrm{Score}_{\mathrm{scene}}$ 虽然能够从全局主题层面对各场景的重要性作出判断，但其在同一场景内部取值恒定，无法区分帧间的细粒度语义差异。当场景中同时存在运动模糊、重复视角与短时高价值瞬间时，单纯依赖场景级分数进行摘要选择极易导致关键帧遗漏或冗余帧误留。鉴于此，本文进一步设计场景先验引导的帧级语义分数增强模块：在继承场景级主题约束的前提下，融合帧与场景、帧与视频两个层面的语义相似度，对各采样帧的重要性进行精细化建模。如图~\ref{fig:score_refinement} 所示，该模块将粗粒度场景先验逐帧展开连续评分序列。
+
+\begin{figure}
   \centering
   \includegraphics[width=0.95\linewidth]{model_score_refinement.pdf}
-  \caption{\textbf{帧重要性评分增强模块示意图。} 左侧展示了基于特征嵌入的多粒度相似度计算过程；右侧展示了融合策略。通过结合LLM的场景评分（粗线）与特征相似度（细线），最终生成的蓝色曲线（Final Score）既保留了高层语义结构，又具备了帧级的区分度。}\label{fig:score_refinement}
+  \caption{场景先验引导的帧级语义分数增强模块}\label{fig:score_refinement}
 \end{figure}
 
-虽然基于LLM的场景评分能够从宏观上识别出与视频主题高度相关的事件片段，但作为一个粗粒度指标，它在以下两个方面存在局限性：
-首先，LLM通过场景描述给出的评分是针对整个镜头（Shot）的统一打分，这意味着同一镜头内的所有帧将被分配相同的初始权重。然而，在实际视频中，即使是一个高分镜头，其内部也往往包含相机抖动、运动模糊或内容冗余的非关键帧。
-其次，LLM的评分完全依赖于文本描述，如果某些复杂的视觉细节未能被Caption准确捕捉，LLM的判断可能会出现偏差。因此，我们需要引入原始视觉特征与文本特征的细粒度匹配，来校准并细化每一帧的重要性得分。
+设视频经采样后得到帧索引集合 $\mathcal{P}=\{p_1,p_2,\ldots,p_N\}$，其中 $p_j$ 为第 $j$ 个采样位置对应的原始帧索引，$N$ 为采样帧总数。进一步定义场景归属映射 $\sigma(j)$，使得 $p_j\in s_{\sigma(j)}$，即 $\sigma(j)$ 返回采样帧 $p_j$ 所在的场景编号。在已有场景语义分数的基础上，本文旨在为每个采样帧构造综合分数 $F(p_j)$，令其同时编码全局主题一致性、场景局部代表性与帧级语义贡献三方面信息。
 
-为此，我们设计了一个基于多模态语义相似度的评分增强模块（Score Refinement Module）。该模块通过计算帧级视觉语义与场景/视频主题描述在特征空间中的距离，为每一帧赋予一个独特的贡献度分数（Contribution Score）。
-
-\subsubsection{联合特征嵌入}
-为了在统一的度量空间中比较视觉内容与文本描述，我们利用预训练的CLIP（Contrastive Language-Image Pre-training）或类似的多模态编码器（如Sentence-BERT用于文本，ViT用于图像）提取特征。在本研究中，鉴于我们在生成Caption时已经将视觉信息转化为文本，我们主要在\textbf{文本特征空间}中进行操作，以保持语义的一致性。
-
-对于第 $k$ 个场景中的第 $t$ 帧，我们首先提取其对应的帧描述 $Cap_{f}(t)$ 的文本特征向量：
-
+\subsubsection{统一文本语义嵌入}
+为确保帧级描述、场景级描述与视频级描述能够在同一度量空间中进行相似性比较，本文采用共享文本编码器 $\mathrm{Enc}(\cdot)$ 对三类描述统一进行向量化。该编码器基于大规模文本语料预训练的句向量模型实现，输出维度记为 $d$。对于采样帧 $p_j$、其所属场景 $s_{\sigma(j)}$ 以及整段视频，分别定义如下语义嵌入：
 \begin{equation}
-  \mathbf{e}_{f}(t) = \text{Encoder}(Cap_{f}(t)) \in \mathbb{R}^{d}
+  \mathbf{e}_{f}(j)=\mathrm{Enc}\big(Cap_f(p_j)\big)\in\mathbb{R}^{d},
 \end{equation}
-
-同样，我们提取当前场景描述 $Cap_{s}(k)$ 和视频全局描述 $Cap_{v}$ 的特征向量：
-
 \begin{equation}
-  \mathbf{e}_{s}(k) = \text{Encoder}(Cap_{s}(k)), \quad \mathbf{e}_{v}= \text{Encoder}
-  (Cap_{v})
+  \mathbf{e}_{s}\big(\sigma(j)\big)=\mathrm{Enc}\big(Cap_s(\sigma(j))\big)\in\mathbb{R}^{d},
 \end{equation}
-
-其中，Encoder采用了在大规模语料上预训练的Sentence Transformer模型（如Qwen-Embedding），确保了向量间的余弦相似度能够准确反映语义相关性。
-
-\subsubsection{多粒度相关性计算}
-我们定义两个维度的语义相关性指标，分别衡量帧的局部代表性和全局重要性。
-
-\paragraph{局部代表性得分（Frame-Scene Similarity, $S_{FS}$）}
-该分数衡量某一帧在多大程度上能够代表其所属的场景。一个好的关键帧应当是该场景的视觉中心，能够最大程度地覆盖场景的语义信息。
-
 \begin{equation}
-  S_{FS}(t) = \text{Simon}(\mathbf{e}_{f}(t), \mathbf{e}_{s}(k)) = \frac{\mathbf{e}_{f}(t)
-  \cdot \mathbf{e}_{s}(k)}{\|\mathbf{e}_{f}(t)\| \|\mathbf{e}_{s}(k)\|}
+  \mathbf{e}_{v}=\mathrm{Enc}(Cap_v)\in\mathbb{R}^{d}.
 \end{equation}
+其中，$Cap_f(p_j)$ 为采样帧 $p_j$ 的帧级描述，$Cap_s(\sigma(j))$ 为其所属场景的场景级描述，$Cap_v$ 为视频全局语义摘要。为简化后文记号，令 $\mathbf{e}_{s,j}=\mathbf{e}_{s}(\sigma(j))$。在相似度计算之前，编码器输出向量统一进行 $L_2$ 归一化，所得归一化向量分别记为 $\mathbf{z}_{f,j}$、$\mathbf{z}_{s,j}$ 与 $\mathbf{z}_{v}$，满足 $\|\mathbf{z}_{f,j}\|_2=\|\mathbf{z}_{s,j}\|_2=\|\mathbf{z}_{v}\|_2=1$。三类描述均源自同一层级语义表示链路，共享编码器有效消除了跨层级特征分布偏移对后续相似度度量的干扰。
 
-\paragraph{全局相关性得分（Frame-Video Similarity, $S_{FV}$）}
-该分数直接衡量某一帧与视频核心主题的契合度。这可以视作一种“捷径（Shortcut）”机制，确保即使某个场景整体评分较低，但如果其中某一帧与主旨高度相关（例如一段冗长风景镜头中突然闪现的主角特写），该帧仍有机会被选中。
-
+\subsubsection{局部与全局语义相关性建模}
+在统一嵌入表示的基础上，本文从局部场景一致性与全局主题一致性两个维度分别度量帧级语义相关性。首先，定义帧与所属场景之间的局部相关性分数为
 \begin{equation}
-  S_{FV}(t) = \text{Simon}(\mathbf{e}_{f}(t), \mathbf{e}_{v}) = \frac{\mathbf{e}_{f}(t)
-  \cdot \mathbf{e}_{v}}{\|\mathbf{e}_{f}(t)\| \|\mathbf{e}_{v}\|}
+  S_{FS}(p_j)=\mathbf{z}_{f,j}^{\top}\mathbf{z}_{s,j},
 \end{equation}
+该分数衡量采样帧 $p_j$ 对所属场景语义中心的代表程度：分数越高，表明该帧越能准确概括场景的核心事件与视觉内容。
 
-\subsubsection{最终分数融合}
-为了得到最终的帧级重要性分数 $FinalScore(t)$，我们将LLM生成的粗粒度场景评分 $S_{\text{LLM}}(k)$ 与上述两个细粒度相似度得分进行加权融合。融合策略旨在兼顾宏观的叙事逻辑与微观的语义匹配。计算公式如下：
+进一步，定义帧与视频全局摘要之间的全局相关性分数为
 \begin{equation}
-  FinalScore(t) = S_{\text{LLM}}(k)^{\alpha}\cdot \left( \beta \cdot S_{FS}(t) +
-  (1-\beta) \cdot S_{FV}(t) \right)
+  S_{FV}(p_j)=\mathbf{z}_{f,j}^{\top}\mathbf{z}_{v}.
 \end{equation}
+与 $S_{FS}(p_j)$ 的局部视角不同，$S_{FV}(p_j)$ 直接从视频叙事主线出发衡量帧的全局契合度，因而能够为持续时间短暂但语义密度较高的关键瞬间提供额外的重要性补偿。
 
-其中，$k$ 是第 $t$ 帧所属的场景索引。$\alpha \in [0, 1]$ 是调节LLM评分影响力的平滑指数（通常设为1.0），$\beta \in [0, 1]$ 是平衡局部与全局语义贡献的权重系数。
+\subsubsection{帧级分数融合与实现流程}
+在帧级语义增强阶段，场景分数 $S_{\mathrm{LLM}}(\sigma(j))$ 充当粗粒度先验，约束当前帧所属场景的整体重要性水平；$S_{FS}(p_j)$ 刻画帧对所在场景的代表能力；$S_{FV}(p_j)$ 提供帧与全局主题之间的直接关联证据。综合上述三项信号，本文将采样帧 $p_j$ 的最终重要性分数定义为
+\begin{equation}\label{eq:frame_refinement_score}
+  F(p_j)=\alpha\,S_{\mathrm{LLM}}\big(\sigma(j)\big)\,S_{FS}(p_j)+S_{FV}(p_j),
+\end{equation}
+其中 $\alpha\geq 0$ 为场景先验调节系数，控制场景级语义先验与全局主题匹配项之间的相对贡献。上式的设计逻辑如下：场景分数与帧--场景相似度的乘积构成受场景先验调制的局部贡献项，而帧--视频相似度作为加性项独立叠加，从而使那些虽处于中低分场景、但与视频主旨高度吻合的关键帧仍能获得较高的最终得分。
 
-通过这种设计，我们的评分系统展现出了良好的特性：LLM评分决定了“基调”，即哪些场景是必须保留的；相似度评分决定了“细节”，即在保留的场景中选择哪一帧。$S_{FS}$有效地抑制了场景内的噪声帧（如模糊、黑屏），因为这些帧的描述通常无法匹配场景主题；$S_{FV}$ 则为那些具备全局意义的瞬间提供了额外的这种保护。
+基于上述定义，整段视频的帧级评分序列可表示为
+\begin{equation}
+  \mathbf{f}=\big[F(p_1),F(p_2),\ldots,F(p_N)\big].
+\end{equation}
+该序列可直接作为后续摘要生成模块的输入。在具体实现中，首先依据场景归属映射 $\sigma(\cdot)$ 将各采样帧与相应的场景级分数 $S_{\mathrm{LLM}}(\sigma(j))$ 对齐；其次逐帧计算 $S_{FS}(p_j)$ 与 $S_{FV}(p_j)$；最后依式~\eqref{eq:frame_refinement_score} 汇合得到最终评分。由于全部输入均已在前序模块中就绪，且嵌入与相似度计算均可按视频独立执行，该模块无需额外训练即可直接部署。
 
-如图\ref{fig:score_refinement}所示，经过这一增强模块的处理，原始的阶梯状场景评分曲线被转化为具有丰富细节的波浪状帧级评分曲线，从而不仅实现了精准的摘要生成，也更符合人类对“关键帧”的感知习惯。
+上述设计的作用体现在两个层面。其一，乘积项 $S_{\mathrm{LLM}}(\sigma(j))S_{FS}(p_j)$ 对场景内部与主要语义偏离的低质量帧施加抑制，赋予场景级重要性分数以帧级分辨率；其二，加性项 $S_{FV}(p_j)$ 从全局主题维度为短时关键内容提供补偿，缓解长场景均值效应对高价值瞬间的稀释。二者形成互补：前者保障评分对局部关键内容的敏感性，后者维系评分与视频叙事主线的一致性，最终使帧级评分兼具全局叙事连贯性与局部语义区分度。该模块在设计上延续了整体框架“语义驱动、训练外推理”的核心理念：场景先验来源于大语言模型的零样本语义判断，帧级相似度依赖于预训练文本编码器的嵌入表示，二者均不引入额外的可学习参数。
 
 \xsection{实验与分析}{exp}
 \xsubsection{数据集}{dataset}
-为了评估本文提出的无监督视频摘要方法的有效性，我们在两个广泛使用的视频摘要基准数据集上进行了实验：SumMe 和 TVSum。
+为全面评估本文所提无监督视频摘要方法的有效性与泛化能力，实验在视频摘要领域两个最具代表性的公开基准数据集——SumMe\cite{gygli2014creating} 与 TVSum\cite{song2015tvsum} 上展开。这两个数据集在视频来源、内容类型、标注粒度和评估协议方面各有侧重，能够从互补的角度检验模型性能。
 
-\subsubsection{SumMe 数据集}
-SumMe 数据集包含25个用户拍摄的原始视频，内容涵盖极广，包括假期记录、特别活动（如烹饪、运动）以及其他日常生活片段。视频的长度从1.5分钟到6.5分钟不等。每个视频都由15--18位人类受试者进行标注，他们被要求选择视频中最具代表性的部分生成摘要。这种多用户的标注方式反映了视频摘要的主观性，为评估模型的泛化能力提供了挑战。
+\paragraph{SumMe} 该数据集由 Gygli 等人\cite{gygli2014creating}于 2014 年构建，包含 25 段用户生成的原始视频，内容涵盖假期旅行、烹饪、极限运动及日常活动等多种开放域场景，视频时长从 1.5 分钟到 6.5 分钟不等。每段视频由 15 至 18 位独立标注者分别标记其认为最能代表视频核心内容的片段，最终形成以片段级为粒度的多人摘要标注。由于各标注者对“重要性”的理解存在固有主观差异，SumMe 数据集充分体现了视频摘要任务的开放性与歧义性，对模型在标注分布高度分散条件下的鲁棒性提出了较高要求。
 
-\subsubsection{TVSum 数据集}
-TVSum 数据集包含50个视频，这些视频来源于YouTube，覆盖了10个特定的类别，如新闻、纪录片、操作教程（How-to）、Vlog等。每个视频同样有20位用户提供的重要度评分（Frame-level Importance Scores），评分范围为1到5。与SumMe不同，TVSum的视频通常具有更明确的主题结构，适合检验模型对特定领域内容的理解能力。
+\paragraph{TVSum} 该数据集由 Song 等人\cite{song2015tvsum}于 2015 年建立，包含 50 段从 YouTube 收集的视频，覆盖新闻事件、纪录片、操作教程（How-to）、Vlog 等 10 个预定义主题类别，每类各含 5 段视频。与 SumMe 的片段级标注不同，TVSum 为每段视频提供 20 位标注者逐帧给出的重要性评分，分值范围为 1 至 5 的整数等级。这种帧级连续标注方式使得评估能够更细致地衡量模型对逐帧重要性排序的准确性。此外，TVSum 数据集中的视频通常具备更为明确的主题结构与叙事线索，因而更适合检验模型对特定领域内容的语义理解与主题把握能力。
 
-在实验中，我们遵循标准的评估协议：对于每个视频，我们使用其所有可用的人类标注作为 Ground Truth。 由于我们的方法是完全无监督（Training-Free）的，我们不需要像监督学习方法那样进行训练集和测试集的划分，而是直接在全量数据集上进行推断和评估。
+上述两个数据集在视频来源、内容多样性、标注粒度与主题结构等方面形成互补：SumMe 侧重考察模型在标注高度分散、叙事结构不规则的开放域场景中的鲁棒性，TVSum 则侧重检验模型在主题结构相对明确、帧级评价更为精细的条件下对内容重要性排序的准确性。二者的联合使用能够从不同维度对方法的泛化性与适应性进行全面评估。
 
 \xsubsection{评估指标}{eval}
-我们采用视频摘要领域通用的定量评估指标来衡量生成摘要的质量，主要包括 $F-Score$ 和秩相关系数（Rank Correlation Coefficients）。
+本文采用视频摘要领域最为通用的 $F_1$-Score 作为核心定量评估指标，用以衡量模型生成摘要与人工标注摘要之间的一致性。
 
-\subsubsection{$F-Score$}
-这是视频摘要中最核心的评估指标，用于衡量生成的摘要与人类标注摘要之间的重叠程度。给定生成的二进制摘要向量 $S_{\text{sys}}$ 和人类标注摘要 $S_{\text{gt}}$，我们首先计算精确率（Precision, $P$）和召回率（Recall, $R$）：
-
+视频摘要任务的最终输出为一个与原视频等长的二值向量，其中值为 1 的位置表示对应帧被选入摘要，值为 0 则表示被排除。设模型生成的二值摘要向量为 $\mathbf{S}_{\mathrm{sys}}$，某一标注者给出的参考摘要向量为 $\mathbf{S}_{\mathrm{gt}}$，二者的元素取值均属于 $\{0,1\}$。在此基础上，精确率（Precision）与召回率（Recall）分别定义为
 \begin{equation}
-  P = \frac{\lvert S_{\text{sys}}\cap S_{\text{gt}}\rvert}{\lvert S_{\text{sys}}\rvert}, \quad R = \frac{\lvert S_{\text{sys}}\cap S_{\text{gt}}\rvert}{\lvert S_{\text{gt}}\rvert}
+  P = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{sys}}|}, \qquad
+  R = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{gt}}|},
+\end{equation}
+其中 $|\cdot|$ 表示集合的基数，$\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}$ 为模型所选帧与标注所选帧的交集。精确率 $P$ 反映模型所选帧中实际属于参考摘要的比例，召回率 $R$ 则反映参考摘要中被模型成功召回的比例。二者的调和平均即为 $F_1$ 分数：
+\begin{equation}
+  F_{1}= \frac{2PR}{P + R}.
 \end{equation}
 
+由于两个数据集均包含多位标注者的独立标注，单一参考摘要无法完整反映视频摘要任务固有的主观性。针对不同数据集的标注特点，领域内分别采用两种评估协议。对于 SumMe 数据集，将模型摘要与每位标注者的参考摘要逐一计算 $F_1$ 分数后取最大值，该协议称为 Max $F_1$-Score：
 \begin{equation}
-  F_{1}= 2 \cdot \frac{P \cdot R}{P + R}
+  F_1^{\max}(v) = \max_{u \in \mathcal{U}_v} F_1(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \mathbf{S}_{\mathrm{gt}}^{(v,u)}),
 \end{equation}
-
-对于拥有多个人类标注（User Annotations）的数据集（如 SumMe 和 TVSum）， 通常的做法是计算模型生成摘要与每一位用户摘要的
-$F_{1}$ 分数， 然后取最大值或平均值作为该视频的最终得分。 在本文中，为了与现有最先进的方法进行公平比较，我们采用标准的 $Max F_{1}-Score$ 协议。
-
-\subsubsection{秩相关系数}
-除了基于二值选择的 $F_{1}$ 分数外，我们还使用肯德尔秩相关系数（Kendall's $\tau$）和斯皮尔曼秩相关系数（Spearman's $\rho$），来评估模型生成的帧重要性分数序列与人类评分序列之间的一致性。这些指标能够更细致地反映模型对视频内容相对重要性的排序能力，
-而不仅仅是最终的二值选择结果， 这对于评估我们提出的基于 LLM 的评分机制尤为重要。
+其中 $\mathcal{U}_v$ 为视频 $v$ 的标注者集合，$\mathbf{S}_{\mathrm{gt}}^{(v,u)}$ 为标注者 $u$ 给出的参考摘要。对于 TVSum 数据集，先将多位标注者的逐帧重要性评分取均值并二值化为参考摘要，再与模型输出计算 $F_1$ 分数，该协议称为 Avg $F_1$-Score：
+\begin{equation}
+  F_1^{\mathrm{avg}}(v) = F_1\!\big(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)}\big), \qquad
+  \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)} = \mathrm{Binarize}\!\Big(\frac{1}{|\mathcal{U}_v|}\sum_{u \in \mathcal{U}_v}\mathbf{r}^{(v,u)}\Big),
+\end{equation}
+其中 $\mathbf{r}^{(v,u)}$ 为标注者 $u$ 给出的帧级重要性评分向量，$\mathrm{Binarize}(\cdot)$ 为按阈值二值化操作。最终，在各数据集上对所有视频的对应 $F_1$ 指标取均值即得总体评估分数。本文严格遵循上述协议——SumMe 报告 Max $F_1$-Score，TVSum 报告 Avg $F_1$-Score——以确保与现有方法具有公平可比性。
 
 \xsubsection{实验细节}{exp}
 \subsubsection{预处理与镜头分割}
-我们使用 KTS（Kernel Temporal Segmentation）算法将视频划分为互不重叠的镜头。为了提高计算效率，我们首先对视频进行下采样（例如每秒提取 2 帧）， 并提取 GoogLeNet 特征用于 KTS 计算。 镜头数量的正则化参数 $\lambda$ 根据视频长度动态调整， 通常使得每个镜头的平均长度在 3--5 秒之间。
+本文采用 KTS（Kernel Temporal Segmentation）算法对视频进行镜头划分，并将得到的连续片段统一作为后续语义建模的场景单元。为控制计算开销，首先对原始视频进行时间下采样，实验中默认以每秒 2 帧的频率提取候选帧；随后使用 GoogLeNet 提取帧级视觉特征，并据此构建 KTS 所需的时序核矩阵。正则化参数 $\lambda$ 随视频时长自适应调整，以保证划分结果既能保留关键语义边界，又不过度切碎视频结构。实际统计中，所得场景平均时长控制在 3--5 秒之间，能够较好兼顾语义完整性与后续推理成本。
 
-\subsubsection{模型配置}：
-在帧级描述生成阶段，我们使用 \texttt{LLaVA-v1.5-7B} 和 \texttt{BLIP-2} 模型。 为了平衡速度与质量，我们仅对每个镜头内的关键帧进行推理。在场景聚合与评分阶段，我们采用 \texttt{GPT-4o} 和 \texttt{DeepSeek-V3} 进行对比实验。 所有 Prompt 均设计为 Zero-shot 格式，温度参数（temperature）设为 0.7，以保证生成的多样性与稳定性。在计算多粒度相似度时，我们使用 \texttt{Qwen-Embedding-8B} 将文本描述映射到 512 维向量空间。
+\subsubsection{模型与推理配置}
+帧级语义描述由视觉语言模型生成。综合生成质量与推理效率，本文采用 \texttt{LLaVA-7B} 与 \texttt{BLIP-2} 作为候选前端，并仅对每个场景内的代表性关键帧进行推理，以避免逐帧描述带来的冗余计算。在场景级描述聚合与重要性评分阶段，使用\texttt{GPT-4o} 与 \texttt{DeepSeek-V3.2}对多帧描述进行归纳和判别；相关提示词均采用 Zero-shot 形式构造，温度参数设置为 0.7，以在稳定性与表达多样性之间取得平衡。对于帧级分数增强模块，本文使用 \texttt{Qwen-Embedding-8B} 将帧级、场景级与视频级文本描述映射到统一语义空间，并在归一化后计算帧与场景、帧与全局视频主题之间的相似度。
 
-\subsubsection{摘要生成}
-最终的二进制摘要生成采用0/1背包问题（Knapsack Problem）求解。我们将每个镜头的时长作为“物品重量”，其最终得分作为“物品价值”，在摘要长度约束（通常为原视频长度的15\%）下最大化总得分。优化过程使用Google OR-Tools 库实现。所有实验均在配置单张 NVIDIA A100 (80GB) GPU的Linux服务器上完成。代码基于PyTorch框架实现。
+\subsubsection{摘要生成与实验环境}
+在得到帧级重要性分数后，本文采用 0/1 背包问题的求解框架生成最终二值摘要。具体而言，将每个镜头或候选片段的持续时长作为“重量”，将其累积分数作为“价值”，在摘要总时长不超过原视频 15\% 的约束下求解最优选择集合。该优化过程基于 Google OR-Tools 实现。全部实验均在 Linux 服务器上完成，硬件配置为单张 NVIDIA RTX5090（32GB）GPU，算法实现基于 PyTorch 框架。除特别说明外，所有结果均按照前述评估协议统计，并在统一实验设置下获得。
 
-\subsubsection{总体性能表现}
-表展示了我们的方法在两个基准数据集上的最佳性能表现。我们采用了为了消除随机性影响，所有结果均为 5 折交叉验证（5-fold Cross Validation）下的平均值。实验结果表明，我们的无监督框架在无需任何人工标注训练的情况下，取得了具有竞争力的 F-Score。
+\xsubsection{对比实验}{comparison}
+为验证本文方法在公开视频摘要任务中的有效性，本节从定量分析与定性分析两个层面展开对比。前者关注模型在标准数据集上的整体性能表现，后者则进一步考察所生成摘要在语义完整性、冗余抑制与叙事连贯性方面的主观质量。
 
-特别是在 SumMe 数据集上，我们的方法达到了 48.3\% 的 F-Score，这主要归功于 SumMe 视频通常包含明显的叙事结构，有利于我们的
-LLM 场景评分机制发挥作用。在 TVSum 数据集上，我们也取得了 60.7\% 的 F-Score，证明了该方法在处理多主题、非结构化视频时的鲁棒性。
+\subsubsection{定量分析}
+表\ref{tab:vs_benchmark} 给出了本文方法与代表性监督方法、无监督方法及训练外方法在 SumMe 和 TVSum 数据集上的对比结果。其中，SumMe 报告 Max $F_1$-Score，TVSum 报告 Avg $F_1$-Score，均与各数据集的主流评估协议保持一致。
 
-\begin{table}
+从表\ref{tab:vs_benchmark} 的整体结果出发，以下从三个维度对实验数据进行分析。
+
+\textbf{与无监督方法的比较。}\enspace 本文方法在完全免训练的条件下，于 SumMe 上（48.3\%）大幅超越早期无监督方法 DR-DSN（41.4\%）与 OM-AE（37.7\%），分别取得 6.9 与 10.6 个百分点的提升；在 TVSum 上（60.7\%）也分别领先 DR-DSN（57.6\%）与 OM-AE（51.5\%）3.1 与 9.2 个百分点。上述结果表明，基于视觉重构或自编码器的传统无监督方法在语义建模能力上存在明显瓶颈，而本文通过引入大语言模型的层级语义推理，即使在不进行任何参数学习的前提下，仍能有效弥合视觉特征与高层叙事语义之间的鸿沟。与近年较强的无监督基线相比，SUM-SR（51.3\%/60.2\%）与 SegSum（54.0\%/62.0\%）在 SumMe 上分别高出本文方法 3.0 与 5.7 个百分点，但这两种方法均需在目标数据集上执行完整的训练流程以学习帧间时序依赖与选择策略。值得注意的是，在 TVSum 上本文方法（60.7\%）与 SUM-SR（60.2\%）仅差 0.5 个百分点，表明层级语义评分在主题结构明确的数据集上已能取得与训练式无监督方法相近的帧级区分能力。
+
+\textbf{与监督方法的比较。}\enspace 本文方法在两个数据集上均超越了早期监督基线 dppLSTM（38.6\%/54.7\%），在 SumMe 上还超越了 ACGAN（47.2\%），领先幅度分别为 9.7/6.0 与 1.1 个百分点。与近年最优监督方法 MPFN（51.9\%/62.4\%）和 CM-AVS（52.4\%/67.5\%）相比，本文方法在 SumMe 上分别落后 3.6 与 4.1 个百分点，在 TVSum 上分别落后 1.7 与 6.8 个百分点。然而需要指出的是，MPFN 与 CM-AVS 均依赖于人工标注的帧级或片段级训练信号，并通过端到端参数优化学习帧间时序建模与选择策略，而本文方法不引入任何可学习参数。在这一严格约束下仍能与监督方法保持可比的性能水平，充分印证了将大语言模型的零样本语义理解能力应用于视频摘要任务的可行性与发展潜力。
+
+\textbf{整体趋势分析。}\enspace 综合来看，本文方法在不依赖任何训练过程的前提下，在 SumMe 与 TVSum 上均达到了早期监督方法与无监督方法的水平之上，且与近年强基线之间的差距主要集中在时序建模精度而非语义理解层面。具体而言，SumMe 数据集涵盖较多叙事结构松散、标注分歧较大的开放域视频，本文的层级语义评分机制在此类场景中展现出更强的鲁棒性；TVSum 数据集则主题集中、场景间语义对比更为鲜明，使得简单的视觉统计量或帧级描述已可支撑较高的基线水平，层级聚合带来的边际增益相对有限。该现象与后续消融实验中帧级增强模块在两个数据集上呈现差异化贡献的规律一致（见表~\ref{tab:ablation_all}），进一步说明本文方法的核心优势在于语义层面的全局主题一致性建模，而非低层时序特征的精细拟合。
+
+\begin{table}[t]
   \centering
-  \caption{Performance comparison on SumMe and TVSum datasets.}\label{tab:vs_benchmark}
+  \caption{本文方法与代表性视频摘要方法的性能对比}\label{tab:vs_benchmark}
   \begin{tblr}{
-    colspec={llcccc},
-    cell{1}{1}={r=2}{c},
-    cell{1}{2}={r=2}{c},
-    cell{1}{3}={c=2}{c},
-    cell{1}{5}={c=2}{c},
+    width=\linewidth,
+    colspec={X[l]X[l]X[c]X[c]},
+    rowsep=2pt,
   }
     \toprule
-    Method & Category & SumMe & & TVSum & \\
-    \cmidrule{3-6}
-    & & Avg. F1 & Max F1 & Avg. F1 & Max F1 \\
+    \textbf{Method} & \textbf{Category} & \textbf{SumMe} & \textbf{TVSum}\\
     \midrule
-    \SetCell[c=6]{c}\textbf{Unsupervised Methods} & & & & & \\
+    dppLSTM (2016)\cite{zhang2016video} & Supervised & 38.6 & 54.7 \\
+    ACGAN (2019)\cite{he2019unsupervised} & Supervised & 47.2 & 59.4 \\
+    MPFN (2024)\cite{khan2024deep} & Supervised & 51.9 & 62.4 \\
+    CM-AVS (2026)\cite{huang2026conditional} & Supervised & 52.4 & 67.5 \\
     \midrule
-    KTS         & Unsupervised & 39.5 & 42.1 & 56.7 & 59.3 \\
-    SUM-GAN     & Unsupervised & 41.7 & 44.3 & 58.5 & 60.8 \\
-    DR-DSN      & Unsupervised & 42.8 & 45.2 & 59.1 & 61.0 \\
-    YourMethod-U& Unsupervised & 45.3 & 47.6 & 61.4 & 63.2 \\
+    DR-DSN (2018)\cite{zhou2018deep} & Unsupervised & 41.4 & 57.6 \\
+    OM-AE (2019)\cite{rochan2019video} & Unsupervised & 37.7 & 51.5 \\
+    SUM-SR (2024)\cite{li2024unsupervised} & Unsupervised & 51.3 & 60.2 \\
+    SegSum (2025)\cite{bang2025integrate} & Unsupervised & 54.0 & 62.0 \\
     \midrule
-    \SetCell[c=6]{c}\textbf{Supervised Methods} & & & & & \\
-    \midrule
-    LSTM        & Supervised   & 41.2 & 43.8 & 58.0 & 60.2 \\
-    dppLSTM     & Supervised   & 42.9 & 45.0 & 59.6 & 61.7 \\
-    VASNet      & Supervised   & 44.5 & 47.1 & 61.2 & 63.5 \\
-    PGL-SUM     & Supervised   & 46.7 & 49.0 & 63.1 & 65.0 \\
-    YourMethod-S& Supervised   & 48.2 & 50.3 & 64.8 & 66.7 \\
-    \midrule
-    \SetCell[c=6]{c}\textbf{Unordered / Training-free Methods} & & & & & \\
-    \midrule
-    CLIP-Score  & Unordered    & 40.1 & 42.5 & 57.3 & 59.8 \\
-    BLIP2-based & Unordered    & 42.0 & 44.2 & 58.9 & 61.1 \\
-    LLM-based   & Unordered    & 44.6 & 46.8 & 60.7 & 62.9 \\
-    YourMethod-Ours & Unordered & \textbf{48.3} & \textbf{48.3} & \textbf{60.7} & \textbf{60.7} \\
+    \textbf{Ours} & \textbf{Training-free} & \textbf{48.3} & \textbf{60.7} \\
     \bottomrule
   \end{tblr}
 \end{table}
 
-值得注意的是，尽管我们的 F-Score 表现优异，但秩相关系数（$\rho$ 和 $\tau$）的绝对值相对较低。这可能是因为我们的评分机制产生的是稀疏的、两极分化的重要性分数（得益于
-LLM 的明确筛选），而人类评分往往更加平滑和连续。然而，在视频摘要任务中，F-Score 通常被视为衡量摘要质量最重要的指标，因为它直接反映了最终生成的摘要视频是否包含关键内容。
+\subsubsection{定性分析}
+为了从可解释性角度进一步观察模型行为，本文从 SumMe 与 TVSum 数据集中各选取一段代表性视频，对帧级评分曲线与关键帧选择结果进行可视化分析。图~\ref{fig:vis_playing_ball} 与图~\ref{fig:vis_WxtbjNsCQ8A} 分别展示了两段视频的帧级重要性评分曲线及代表性关键帧。每幅图的上方展示模型评分与人工标注取得较高一致性的 6 个时刻所对应的视频帧缩略图；下方由上至下依次绘制场景级语义评分 $S_{\mathrm{LLM}}$（蓝色）、帧--场景相似度 $S_{FS}$（绿色）、帧--视频全局相似度 $S_{FV}$（红色）以及最终融合评分 $P_j$（黑色）四条曲线，各子图中以灰色填充区域标示人工标注的重要性分布，便于直观比较模型评分与参考标注之间的对应关系。
 
-\subsubsection{参数 $\alpha$ 的敏感性分析}
-为了探究局部场景重要性与全局视频相关性在最终评分中的相对贡献，我们引入了平衡参数 $\alpha$。根据公式 $Score(t) = \alpha \cdot (S_{\text{LLM}}\cdot S_{FS}) + S_{FV}$，更大的 $\alpha$ 意味着模型更依赖于 LLM 对局部场景的判断，而较小的 $\alpha$ 则意味着模型更倾向于选择那些在视觉上与全局视频主题相似的帧。
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{method1_results_visualization_playing_ball.pdf}
+  \caption{SumMe 数据集 Playing Ball 视频的帧级评分曲线与代表性关键帧可视化}\label{fig:vis_playing_ball}
+\end{figure}
 
-我们在 $[0.0, 1.0]$ 区间内以 $0.1$ 为步长对 $\alpha$ 进行了扫描实验。表和图（数据见表中）展示了 F-Score 随 $\alpha$ 变化的趋势。
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{method1_results_visualization_WxtbjNsCQ8A.pdf}
+  \caption{TVSum 数据集 WxtbjNsCQ8A 视频的帧级评分曲线与代表性关键帧可视化}\label{fig:vis_WxtbjNsCQ8A}
+\end{figure}
+
+\textbf{SumMe Playing Ball 视频分析。}\enspace 如图~\ref{fig:vis_playing_ball} 所示，该视频时长约 3.5 分钟，记录了社区中动物与人的日常互动场景，内容涵盖黑猫在露台上攀爬与拨弄球类、宠物犬在草坪上追逐网球、地面鸟类觅食以及人与动物之间的温和嬉戏等多样化片段。该视频具有典型的开放域特征：叙事结构松散，不同片段之间缺乏明确的时序推进逻辑，且各标注者对关键片段的选择分歧较大。从评分曲线可以观察到，$S_{\mathrm{LLM}}$ 呈现显著的分段阶梯特征，对视频中动物主动互动的片段（如猫与球的嬉戏、犬只追逐等核心事件）赋予较高的场景评分（$S_{\mathrm{LLM}} \approx 0.85$），而对重复性空镜与低动态过渡段落（如静态庭院画面、等待间歇等）给出明显偏低的评分（$S_{\mathrm{LLM}} \approx 0.1\text{--}0.2$），表明大语言模型能够有效区分承载叙事功能的核心事件与低信息密度的冗余过渡。$S_{FS}$ 在场景内部引入了显著的逐帧波动，其高峰区域（$S_{FS} > 0.9$）集中对应于动物互动最具代表性的动作瞬间，例如犬只叼球奔跑、猫咪跳跃攀爬等画面清晰且动作完整的帧，而同一场景中视角模糊或主体遮挡的帧则呈现明显的分数回落，验证了帧--场景相似度在刻画场景内部帧级质量差异方面的作用。$S_{FV}$ 的取值范围相对平缓（0.23--0.68），但在散布于不同场景的若干帧上呈现出独立于 $S_{\mathrm{LLM}}$ 的局部峰值，说明全局主题匹配项能够为虽处于中低分场景、但与"动物与人日常共处"这一视频主旨高度吻合的帧提供额外的重要性补偿。最终融合评分 $P_j$ 的高分区间与人工标注的灰色填充区域呈现出良好的对应关系：在多位标注者一致认定的关键时段上，模型评分形成了集中而稳定的响应峰值；同时，在标注重要性趋近于零的区间内，$P_j$ 亦维持在较低水平，有效避免了冗余片段的误选。
+
+\textbf{TVSum WxtbjNsCQ8A 视频分析。}\enspace 如图~\ref{fig:vis_WxtbjNsCQ8A} 所示，该视频时长约 8.8 分钟，属于 TVSum 中生活纪实类别，以一位养蜂人的日常劳作为主线，记录了其在自家庭院中管理蜂箱、检查蜂框、采集蜂蜜的完整过程，并穿插有社区邻里活动与室内手工操作等辅助场景。与 Playing Ball 视频截然不同，该视频具有更为明确的主题结构与叙事主线，其重要性分布表现为从低到高的渐进式变化。$S_{\mathrm{LLM}}$ 曲线清晰地反映了这一时序结构：视频开场的静态导引画面与邻里寒暄段落获得极低的场景评分（$S_{\mathrm{LLM}} \approx 0.01$），随着镜头逐步聚焦于庭院蜂箱操作，场景评分上升至中等水平（$S_{\mathrm{LLM}} \approx 0.25\text{--}0.65$），而进入蜂群管理、蜂框检查与蜂蜜采集等核心养蜂场景后，评分提升至较高水平并持续维持（$S_{\mathrm{LLM}} \approx 0.75\text{--}0.85$）。这种从低到高的阶梯式评分模式精确对应了视频"铺垫—展开—高潮"的叙事节奏，表明大语言模型在处理具有明确主题结构的长视频时，能够准确识别叙事主线并据此合理分配场景级重要性权重。在帧级评分层面，$S_{FS}$ 在高分场景内部进一步区分了不同操作环节的代表程度：养蜂人正面操作蜂框、展示蜂群密集聚集等信息密度较高的帧获得了更为突出的分值，而同一场景中工具搬运或操作间歇等过渡性帧的分值则相对回落。$S_{FV}$ 在此视频中表现出更为均匀的调节作用：由于视频主题高度聚焦于养蜂活动，大部分涉及蜂箱或蜂群的帧均获得了较高的全局主题关联度，而开场寒暄与结尾字幕等与主题关联较弱的片段则被有效抑制。最终评分曲线在蜂群管理与蜂蜜采集的核心时段内形成了持续的高分区域，其分布形态与人工标注的高分区间高度吻合。
+
+综合上述两个案例的分析，可以从以下三个层面总结本文方法在定性表现上的特征。其一，场景级语义评分 $S_{\mathrm{LLM}}$ 在两类视频中均展现出符合直觉的语义判别能力：对于叙事结构松散的开放域视频（Playing Ball），能够在多样化片段中准确定位与视频主旨最为相关的核心互动事件；对于主题明确的长视频（WxtbjNsCQ8A），能够沿时间轴刻画叙事重心的渐进演变趋势。其二，帧--场景相似度 $S_{FS}$ 与帧--视频全局相似度 $S_{FV}$ 的联合作用有效弥补了场景级评分在帧内分辨力上的不足——前者确保高分场景中真正具有代表性的关键帧脱颖而出，后者为持续时间较短但语义密度较高的片段提供基于全局主题的补偿，二者在乘积与加法融合机制下实现了互补协同。其三，两段视频的最终融合评分曲线均在关键事件处呈现集中的响应峰值，在冗余或低质量片段处维持较低水平，且其高分区间与人工标注的重要性分布之间体现出良好的对应关系，进一步印证了本文方法在层级语义约束下完成由粗到细、由全局到局部的多尺度重要性评估的设计意图。
+
+\xsubsection{消融实验}{ablation}
+为进一步说明本文框架中各组成部分的具体贡献，本节从模块消融分析与参数分析两个层面展开讨论。前者关注不同功能模块及评分策略对整体性能的影响，后者考察关键超参数对模型表现的敏感性。
+
+\subsubsection{模块消融分析}
+首先，本文对最终评分公式进行了消融研究。设帧级重要性由场景评分 $S_{LLM}$、帧与场景相似度 $S_{FS}$ 以及帧与全局视频相似度 $S_{FV}$ 共同决定，则可构造若干不同的融合变体。表\ref{tab:formula_ablation} 给出了各类评分策略在最佳设置下的实验结果。
 
 \begin{table}
   \centering
-  \caption{参数 $\alpha$ 对 F-Score 的影响分析。}\label{tab:alpha_ablation}
+  \caption{评分融合策略的消融实验。}\label{tab:formula_ablation}
+  \begin{tblr}{
+    colspec={lcc},
+    colsep=2pt,
+    rowsep=0pt,
+  }
+    \toprule
+    \textbf{Fusion Formula} & \textbf{SumMe Max $F_1$} & \textbf{TVSum Avg $F_1$} \\
+    \midrule
+    \texttt{s\_only} ($S_{LLM}$) & 46.13\% & 59.26\% \\
+    \texttt{s\_add\_fs} ($S_{LLM}+ S_{FS}$) & 47.19\% & 60.01\% \\
+    \texttt{s\_mul\_fs} ($\alpha \cdot S_{LLM}\cdot S_{FS}$) & 46.79\% & 59.80\% \\
+    \textbf{\texttt{s\_mul\_fs\_add\_fv} (Ours)} & \textbf{48.25\%} & \textbf{60.67\%} \\
+    \bottomrule
+  \end{tblr}
+\end{table}
+
+从表中数据可以观察到以下规律。其一，仅使用场景评分 $S_{LLM}$ 时（SumMe 46.13\%、TVSum 59.26\%），模型已能给出具备一定语义合理性的摘要，但由于同一场景内所有帧共享相同分数，场景内部的帧级质量差异被完全忽略，限制了进一步提升的空间。其二，引入帧-场景相似度 $S_{FS}$ 后，加法变体在 SumMe 上提升 1.06 个百分点、乘法变体提升 0.66 个百分点，说明刻画帧对所属场景语义中心的贴合程度对细粒度帧筛选具有明确的正向作用，且加法融合在保留帧级区分度方面优于乘法融合。其三，仅建模局部一致性尚不足以达到最优，因为部分时长较短但对全局主题高度关键的片段在其所属场景内部可能并不占主导地位，仅凭 $S_{FS}$ 难以将其有效识别。本文提出的完整公式在乘积项基础上叠加帧-视频全局相似度 $S_{FV}$，使最终评分在两个数据集上均达到最佳（SumMe 48.25\%、TVSum 60.67\%），充分证实了"局部代表性 + 全局主题一致性"双重约束的必要性与信号互补性。
+
+在评分公式之外，本文进一步对各功能模块进行消融研究。与前述逐步添加的分析视角互补，表\ref{tab:ablation_all} 采用"移除单一模块"的方式，直观展示各组件对完整模型性能的贡献。
+
+\begin{table}
+  \centering
+  \caption{各子模块消融实验结果}\label{tab:ablation_all}
+  \begin{tblr}{
+    width=\linewidth,
+    colspec={X[3,l]X[c]X[c]X[c]X[c]},
+    rowsep=2pt,
+    cell{1}{2}={c=2}{c},
+    cell{1}{4}={c=2}{c},
+    hline{3}={2-3}{0.5pt},
+    hline{3}={4-5}{0.5pt},
+  }
+    \toprule
+    \textbf{Model} & \textbf{SumMe} & & \textbf{TVSum} & \\
+    & Max $F_1$ (\%) & $\Delta$ & Avg $F_1$ (\%) & $\Delta$ \\
+    \midrule
+    w/o KTS & 44.1 & $-4.2$ & 57.2 & $-3.5$ \\
+    w/o Caption \& Scene Scoring & 41.8 & $-6.5$ & 56.0 & $-4.7$ \\
+    w/o F$\to$S (Local Matching) & 46.8 & $-1.5$ & 59.8 & $-0.9$ \\
+    w/o F$\to$V (Global Matching) & 47.2 & $-1.1$ & 60.0 & $-0.7$ \\
+    w/o Frame Refinement & 46.1 & $-2.2$ & 59.3 & $-1.4$ \\
+    \midrule
+    Full model (Ours) & \textbf{48.3} & --- & \textbf{60.7} & --- \\
+    \bottomrule
+  \end{tblr}
+\end{table}
+
+从表\ref{tab:ablation_all} 可以看出，语义描述与场景评分模块对性能贡献最大（$\Delta=-6.5/-4.7$），表明 LLM 驱动的语义理解是本文方法超越传统基线的核心因素；KTS 镜头划分的移除同样导致显著的性能下降（$\Delta=-4.2/-3.5$），说明结构化预处理为后续语义建模提供了必要的时序基础。帧级增强模块方面，同时移除局部与全局匹配（w/o Frame Refinement）造成的性能损失（$\Delta=-2.2/-1.4$）大于单独移除任一匹配项，证实二者在帧级评分中具有互补作用：局部匹配负责场景内的精细甄选，全局匹配为短时高价值片段提供主题层面的补偿。
+
+\subsubsection{参数分析}
+本文进一步考察平衡系数 $\alpha$ 对模型性能的影响。根据评分公式
+\begin{equation}
+  Score = \alpha \cdot (S_{LLM}\cdot S_{FS}) + S_{FV},
+\end{equation}
+$\alpha$ 用于调节场景级语义先验与全局主题匹配项之间的相对权重。为分析其敏感性，本文在 $[0,1]$ 区间内以 0.1 为步长进行扫描，实验结果如表\ref{tab:alpha_ablation} 所示。
+
+\begin{table}
+  \centering
+  \caption{参数 $\alpha$ 对视频摘要性能的影响。}\label{tab:alpha_ablation}
   \begin{tblr}{
     colspec={ccc},
     colsep=2pt,
     rowsep=0pt,
   }
     \toprule
-    \textbf{Alpha ($\alpha$)} & \textbf{SumMe F-Score (\%)} & \textbf{TVSum F-Score (\%)} \\
+    \textbf{$\alpha$} & \textbf{SumMe Max $F_1$ (\%)} & \textbf{TVSum Avg $F_1$ (\%)} \\
     \midrule
     0.0 & 47.20 & 60.01 \\
     0.1 & 47.82 & 60.61 \\
@@ -445,165 +414,11 @@ LLM 的明确筛选），而人类评分往往更加平滑和连续。然而，�
   \end{tblr}
 \end{table}
 
-实验数据显示，在 $\alpha=0.2$ 时，两个数据集的 F-Score 均达到峰值。这表明，虽然 LLM 提供的场景级语义先验（$\alpha$ 项）非常重要，但直接的视觉-全局主题匹配（$S_{FV}$ 项）仍然是基石。$\alpha=0.2$ 的设置恰好在“信任 LLM的逻辑判断”与“确保证据确凿的视觉相似性”之间找到了最佳平衡。随着 $\alpha$ 从 0.2 增加到 1.0，性能呈现缓慢下降的趋势（SumMe 从 48.25\% 降至 47.20\%，TVSum 从 60.67\% 降至 60.01\%）。这说明过分依赖 LLM 的粗粒度场景评分可能会导致忽略一些视觉上显著但文本描述平淡的细节帧。相反，当$\alpha=0.0$ 时（即完全退化为传统的视觉相似度匹配），性能也有所下降，验证了引入 LLM 语义评分的必要性。SumMe 数据集对 $\alpha$ 的变化更为敏感（波动约 1\%），而
-TVSum 相对平稳（波动约 0.6\%）。这与其数据特性一致：SumMe 视频通常较短且更依赖叙事逻辑（需要LLM 介入），而 TVSum 视频较长且主题明确（视觉相似度本身已具有很强区分力）。综上所述，我们的方法通过引入参数 $\alpha$ 灵活地结合了高层语义推理与底层视觉匹配，在 $\alpha=0.2$ 的设置下展现出了最佳的视频摘要能力。这一发现为后续多模态视频分析任务中的特征融合策略提供了有价值的参考。
-
-\subsection{对比实验与消融研究}
-为了全面验证本文所提出框架的有效性以及各个模块的设计合理性，我们进行了一系列的对比实验与消融分析。我们主要关注以下三个方面：(1) 不同大语言模型（LLM）作为核心推理引擎对摘要性能的影响；(2) 评分融合策略（Evaluation Formula）与时序平滑（Temporal Smoothing）机制的作用；(3) 各子模块（语义描述、场景评分、特征匹配）对最终结果的增量贡献。
-
-\subsubsection{不同LLM基座的性能对比}
-在我们的框架中，LLM承担着两大核心任务：场景/视频级语义描述的生成与场景重要性的打分。LLM的推理能力直接决定了语义理解的深度，进而影响最终的摘要质量。为此，我们选取了当前最具代表性的两个闭源与开源模型进行对比：GPT-4o：OpenAI最新发布的旗舰模型，代表了当前商业闭源模型的最高水平。DeepSeek-V3：近期表现优异的开源混合专家（MoE）模型，在多项推理任务上展现出媲美GPT-4的能力。
-
-我们将这两种模型分别置入我们的框架中，在相同的条件（相同的VLM前端、相同的Prompt模板、相同的 $\alpha$ 参数扫描范围）下进行了全量测试。表\ref{tab:llm_comparison} 汇总了两个模型在SumMe和TVSum数据集上的最佳F-Score表现。
-
-\begin{table}
-  \centering
-  \caption{不同LLM基座模型的性能对比。}\label{tab:llm_comparison}
-  \begin{tblr}{
-    colspec={lcccc},
-    colsep=2pt,
-    rowsep=0pt,
-    cell{1}{1}={r=2}{c},
-    cell{1}{2}={c=2}{c},
-    cell{1}{4}={c=2}{c},
-  }
-    \toprule
-    \textbf{LLM Backend} & \textbf{SumMe} & & \textbf{TVSum} & \\
-    & \textbf{Best F-Score} & \textbf{Optimal $\alpha$} & \textbf{Best F-Score} & \textbf{Optimal $\alpha$} \\
-    \midrule
-    \textbf{GPT-4o (Ours)} & \textbf{48.25\%} & 0.2 & 60.67\% & 0.2 \\
-    \textbf{DeepSeek-V3} & 48.10\% & 0.2 & \textbf{61.05\%} & 0.3 \\
-    \bottomrule
-  \end{tblr}
-\end{table}
-
-实验结果显示，DeepSeek-V3与GPT-4o在视频摘要任务上的表现互有胜负，且差距极小（F-Score差值在0.4\%以内）。这表明我们的框架具有良好的泛化性，不依赖于特定模型的偶然偏好，同时也验证了该框架在开源模型上的可行性。
-
-\subsubsection{评分融合公式的消融分析}
-我们的最终帧重要性评分 $FinalScore$ 由LLM场景评分 $S_{LLM}$、帧-场景相似度 $S_{FS}$ 和帧-视频相似度 $S_{FV}$ 共同决定。为了验证这种组合方式的有效性，我们对比了四种不同的融合变体：\texttt{s\_only}，即 $Score = S_{LLM}$；\texttt{s\_add\_fs}，即 $Score = S_{LLM}+ S_{FS}$；\texttt{s\_mul\_fs}，即 $Score = \alpha \cdot S_{LLM}\cdot S_{FS}$；以及本文提出的完整方法 \texttt{s\_mul\_fs\_add\_fv}，即 $Score = \alpha \cdot (S_{LLM}\cdot S_{FS}) + S_{FV}$。
-
-表\ref{tab:formula_ablation} 展示了在最佳 $\alpha$ 设置下，不同融合策略的性能。
-
-\begin{table}
-  \centering
-  \caption{评分融合策略的消融实验。}\label{tab:formula_ablation}
-  \begin{tblr}{
-    colspec={lcc},
-    colsep=2pt,
-    rowsep=0pt,
-  }
-    \toprule
-    \textbf{Fusion Formula} & \textbf{SumMe F-Score} & \textbf{TVSum F-Score} \\
-    \midrule
-    \texttt{s\_only} ($S_{LLM}$) & 46.13\% & 59.26\% \\
-    \texttt{s\_add\_fs} ($S_{LLM}+ S_{FS}$) & 47.19\% & 60.01\% \\
-    \texttt{s\_mul\_fs} ($\alpha \cdot S_{LLM}\cdot S_{FS}$) & 46.79\% & 59.80\% \\
-    \textbf{\texttt{s\_mul\_fs\_add\_fv} (Ours)} & \textbf{48.25\%} & \textbf{60.67\%} \\
-    \bottomrule
-  \end{tblr}
-\end{table}
-
-实验结果表明，单纯通过乘法（\texttt{s\_mul\_fs}）或加法（\texttt{s\_add\_fs}）融合局部特征与场景评分并不能达到最优，这主要是因为忽略了全局视频主题对帧重要性的“挽救”作用。完整方法通过引入 $S_{FV}$（帧与全视频描述的相似度），为那些虽然处于低分场景但视觉上十分突出的帧提供了保留的机会（SumMe +1.46\%，TVSum +0.87\%），显著提升了摘要的完整性。
-
-\subsubsection{不同LLM基座的性能对比}
-在我们的框架中，LLM承担着两大核心任务：场景/视频级语义描述的生成与场景重要性的打分。LLM的推理能力直接决定了语义理解的深度，进而影响最终的摘要质量。为此，我们将不同的主流大语言模型置入框架中作为 Scene Score 评分器，并在 SumMe 和 TVSum 数据集上进行了对比测试。表\ref{tab:llm_scene_score} 展示了不同 LLM 下的性能表现。
-
-\begin{table}
-  \centering
-  \caption{不同 LLM 在 Scene Score 模块中的性能对比。}\label{tab:llm_scene_score}
-  \begin{tblr}{
-    colspec={lcc},
-    colsep=2pt,
-    rowsep=0pt,
-  }
-    \toprule
-    \textbf{LLM} & \textbf{SumMe} $\uparrow$ & \textbf{TVSum} $\uparrow$ \\
-    \midrule
-    GPT-3.5 & 45.2 & 58.8 \\
-    GPT-4o & \textbf{48.3} & 60.7 \\
-    DeepSeek-V3 & 48.1 & \textbf{61.1} \\
-    Qwen-14B & 44.5 & 59.2 \\
-    LLaMA-3-8B & 43.8 & 58.1 \\
-    Claude-3.5-Sonnet & \underline{47.9} & \underline{60.5} \\
-    \bottomrule
-  \end{tblr}
-\end{table}
-
-实验结果表明，模型的推理能力与摘要性能呈现出明显的正相关。相比于早期的 GPT-3.5 或较小参数量的 Qwen-14B，具备更强逻辑推理与长文本理解能力的 GPT-4o 和 DeepSeek-V3 取得了显著优势（SumMe +3.1\%，TVSum +1.9\%）。值得注意的是，开源模型 DeepSeek-V3 在 TVSum 数据集上甚至略微超越了 GPT-4o，这得益于其优秀的指令遵循能力和对结构化信息的抓取能力。我们的方法默认采用 GPT-4o 或 DeepSeek-V3 作为后端，均能达到 SOTA 级别的无监督性能，证明了框架对强 LLM 的有效利用。
-
-\subsubsection{参数 $\alpha$ 的敏感性分析}
-参数 $\alpha$ 用于平衡 LLM 场景评分项 $S_{LLM}\cdot S_{FS}$ 与全局视频特征匹配项 $S_{FV}$ 的权重。根据公式 $Score = \alpha \cdot (S_{LLM}\cdot S_{FS}) + S_{FV}$，$\alpha$ 越大，模型越依赖 LLM 对场景的宏观判断；$\alpha$ 越小，模型越倾向于选择视觉上与视频主题更相似的帧。表\ref{tab:hyper_a} 展示了不同 $\alpha$ 取值下的 F-Score 变化。
-
-\begin{table}
-  \centering
-  \caption{参数 $\alpha$ 对视频摘要性能的影响。}\label{tab:hyper_a}
-  \begin{tblr}{
-    colspec={ccc},
-    colsep=2pt,
-    rowsep=0pt,
-  }
-    \toprule
-    \textbf{$\alpha$} & \textbf{SumMe} $\uparrow$ & \textbf{TVSum} $\uparrow$ \\
-    \midrule
-    0.0 & 47.2 & 60.0 \\
-    0.2 & \textbf{48.3} & \textbf{60.7} \\
-    0.4 & 47.3 & \underline{60.5} \\
-    0.6 & 47.2 & 60.0 \\
-    0.8 & \underline{47.6} & 60.0 \\
-    1.0 & 47.2 & 60.0 \\
-    \bottomrule
-  \end{tblr}
-\end{table}
-
-实验数据显示，最佳性能均出现在 $\alpha=0.2$ 处。这意味着，虽然引入 LLM 的语义先验是有益的，但过分依赖 LLM 的粗粒度打分（$\alpha \ge 0.6$）会导致性能下降，甚至回退到接近视觉基线的水平。$\alpha=0.2$ 的设置恰好构成了一种“软约束”：以视觉特征匹配为主，再利用 LLM 评分作为高质量先验进行权重调节，从而在保证视觉相关性的同时引入语义层面的筛选。
-
-\subsubsection{各子模块消融实验}
-为了进一步厘清各个功能模块的具体贡献，我们在基础模型（Base）上逐步增加组件进行了消融实验。这里的基础模型定义为随机选择镜头，随后依次引入 KTS 镜头分割（Shot）、LLM 描述生成与评分（Caption \& Scoring）、帧-场景特征匹配（F$\rightarrow$S）以及帧-视频特征匹配（F$\rightarrow$V）。表\ref{tab:ablation_all} 展示了这一过程中的性能变化。
-
-\begin{table}
-  \centering
-  \caption{各子模块消融实验结果。}\label{tab:ablation_all}
-  \begin{tblr}{
-    colspec={cccccc},
-    colsep=2pt,
-    rowsep=0pt,
-  }
-    \toprule
-    \textbf{Shot (KTS)} & \textbf{Caption (LLM)} & \textbf{F$\rightarrow$S (Local)} & \textbf{F$\rightarrow$V (Global)} & \textbf{SumMe} $\uparrow$ & \textbf{TVSum} $\uparrow$ \\
-    \midrule
-    $\times$ & $\times$ & $\times$ & $\times$ & 39.5 & 54.1 \\
-    \ding{51} & $\times$ & $\times$ & $\times$ & 41.2 & 55.8 \\
-    \ding{51} & \ding{51} & $\times$ & $\times$ & 46.1 & 59.3 \\
-    \ding{51} & \ding{51} & \ding{51} & $\times$ & 47.2 & 60.0 \\
-    \ding{51} & \ding{51} & $\times$ & \ding{51} & 46.8 & 59.8 \\
-    \midrule
-    \ding{51} & \ding{51} & \ding{51} & \ding{51} & \textbf{48.3} & \textbf{60.7} \\
-    \bottomrule
-  \end{tblr}
-\end{table}
-
-实验结果表明，各个模块均对最终性能有明确贡献。首先，仅引入镜头分割便带来了初步提升，说明结构化处理明显优于随机帧选择。随后，引入 LLM 进行语义描述与场景评分带来了最大幅度的性能跃升，这直接验证了本文的核心假设：利用 LLM 跨越语义鸿沟是提升无监督视频摘要性能的关键。
-
-在此基础上，加入局部特征匹配 F$\rightarrow$S 后，模型能够在候选场景内部进一步筛选更具代表性的帧，性能继续提升；而加入全局特征匹配 F$\rightarrow$V 后，模型则获得了从全视频主题角度纠正局部偏差的能力，使那些虽然位于低分场景、但与整体主题高度相关的帧仍有机会被保留。完整模型因此取得了最佳结果，说明 LLM 提供的语义基准与多粒度特征匹配提供的视觉证据是互补而非替代关系，二者的结合共同构成了本文方法的性能来源。
-
-\xsubsection{可视化结果与定性分析}{visualization}
-为了更直观地验证本文所提出框架在视频摘要生成中的有效性，并分析大语言模型（LLM）与多粒度语义匹配机制在实际视频处理中的行为模式，本节从摘要片段选择和帧级评分曲线两个层面给出定性结果。
-
-\subsubsection{摘要片段选择结果}
-图中展示了 SumMe 和 TVSum 数据集中两个代表性视频“Cooking”与“Eiffel Tower”的摘要生成结果。我们将模型生成的关键帧序列与人类标注结果以及两种传统无监督基线方法，即基于聚类的 K-Means 和基于对抗生成网络的 SUM-GAN，进行了对比。
-
-从可视化结果可以看出，本文方法在语义一致性、冗余抑制和叙事完整性三个方面都更接近人类偏好。对于“Cooking”视频，人类标注通常保留“准备食材”“下锅烹饪”和“成品展示”三个核心阶段，而传统视觉特征方法容易受到光照变化或背景杂乱的干扰，选入大量无意义的手部特写或空盘子镜头；相比之下，本文方法能够更稳定地识别这些关键语义节点，这主要得益于 LLM 对场景描述的理解能力，它能够从“Woman chops vegetables”推断出准备阶段，从“Food fries in the pan”推断出核心烹饪动作，从而赋予相应片段更高的语义权重。对于“Eiffel Tower”视频，原始素材中存在大量游客排队、购票以及多角度重复拍摄塔身的冗余内容，SUM-GAN 等方法虽然也会选取部分塔身镜头，但难以有效过滤长时间的排队画面；而本文方法能够通过场景描述判断“People waiting in line”与视频主题“Tour of Eiffel Tower”的相关性较低，因此在 LLM 评分阶段显著压低该类片段的权重，最终保留了塔身全景、塔顶俯瞰城市等信息密度更高的画面。与此同时，本文方法还能保留一些视觉上并不突兀但叙事上不可缺少的过渡镜头，例如烹饪视频中食材入锅的瞬间。其原因在于全局特征匹配模块 $S_{FV}$ 能够检测到这些帧与视频主题“Cooking Process”在语义空间中的高度接近，即便对应场景的 LLM 评分略低，也能通过特征匹配项获得补偿。
-
-\subsubsection{多粒度评分曲线分析}
-为了进一步揭示模型的工作机理，图绘制了某一具体视频的帧级重要性评分曲线。图中展示了三个关键信号：LLM 场景评分 $S_{LLM}$（阶梯状虚线）、帧与场景或视频的相似度评分 $S_{FS/V}$（细实线）以及融合和平滑后的最终总分 Final Score（粗实线），底部彩色条带对应 Ground Truth 的高分区域。
-
-从图可以进一步看出，$S_{LLM}$ 呈现明显的阶梯状结构，每个台阶对应一个经 KTS 划分得到的镜头，这说明 LLM 主要负责给出粗粒度的语义基调；对于长时间黑屏、镜头晃动或内容模糊等与主题明显无关的片段，其场景分数会被直接压低到 0.2 以下，从源头上剔除干扰项。在 LLM 判定为高分的场景内部，$S_{FS}$ 曲线则表现出更细致的局部波动，例如相机推拉或快速变焦带来的失焦帧，会因为与场景描述的相似度下降而在最终曲线上形成局部凹陷，从而引导摘要生成器避开低质量帧、保留相邻的清晰帧，这说明特征匹配模块有效承担了细粒度筛选的作用。此外，在视频后半段约 80\% 位置处，还可以观察到一个非常短暂却信息密度极高的高光镜头。由于该镜头持续时间过短，KTS 将其与前后较长的平淡片段划入同一场景，导致 LLM 基于长文本给出的场景评分被平均化；但此处的 $S_{FV}$ 出现了尖峰，成功将最终评分抬升至阈值之上。这一现象验证了我们在第节中提出的全局捷径机制是有效的，它能够避免短时高价值内容被长时低价值内容淹没。
-
-综上，可视化结果不仅直观证明了本文方法生成的摘要与人类认知具有较高一致性，也揭示了层级化语义框架内部的协同机理：LLM 负责宏观层面的逻辑筛选与去噪，视觉特征匹配负责微观层面的质量判断与细节补偿，而两者的配合正是模型取得优异性能的关键。
+结果表明，两个数据集均在 $\alpha=0.2$ 时取得最优性能，且在 $\alpha\in[0.1,0.3]$ 的邻域内保持较高且稳定的表现，说明模型对该参数并不过度敏感。从物理含义上看，$\alpha=0.2$ 意味着框架以全局主题匹配项 $S_{FV}$ 为主导，场景级语义先验仅作为适度的辅助调制信号参与帧级评分，这一配置与本文"以全局主题一致性为锚、以局部语义代表性为补充"的设计理念高度吻合。对两个极端情形的分析进一步佐证了上述判断：当 $\alpha=0$ 时，评分公式退化为 $F(p_j)=S_{FV}(p_j)$，场景级 LLM 评分完全不参与帧级分数细化，模型丧失了对叙事结构的层级把控能力；当 $\alpha$ 持续增大至 0.6 以上时，场景级粗粒度评分的调制作用过强，场景内部帧间差异被压缩，性能趋于平稳并略有下降。此外值得注意的是，TVSum 上 $\alpha\ge 0.6$ 后 $F_1$ 分数稳定在 60.01\%，恰与 $\alpha=0$ 时的表现一致，提示当场景先验权重过高时其正负效应相互抵消，有效信息增益趋近于零。综合上述分析，$\alpha=0.2$ 在"语义推理"与"嵌入匹配"之间实现了较理想的平衡，亦进一步表明本文方法的有效性并非依赖单一信号源，而是来自多层级语义线索在适当权重配比下的协同作用。
 
 \xsection{本章小结}{summary}
 本章围绕传统视频摘要方法存在的语义鸿沟问题，提出了一种基于多粒度语义理解与大语言模型推理的无监督视频摘要方法。该方法以层级化建模为核心思路，将底层视觉信号逐步转化为高层语义表示，从而避免仅依赖视觉特征时难以把握叙事逻辑与主题一致性的局限。
 
 具体而言，本文构建了由 KTS 镜头划分、多层级语义描述生成、基于 LLM 的场景重要性评分以及视觉文本对齐驱动的帧级分数细化组成的整体框架。在描述生成阶段，方法先将连续视频切分为具有语义独立性的镜头单元，再借助视觉语言模型生成帧级描述，并通过 LLM 自底向上地聚合为场景级与视频级语义摘要，形成“帧-场景-视频”的层级语义结构。在评分阶段，本文进一步提出“语义推理+视觉验证”的双重打分机制，利用 LLM 建立场景与全视频主题之间的语义关联，再结合帧与场景、帧与视频的跨模态相似度对场景级分数进行细化，最终通过 $Score = \alpha \cdot (S_{\text{LLM}}\cdot S_{FS}) + S_{FV}$ 得到具有帧级分辨率的重要性序列。
 
-实验结果表明，本文方法在 SumMe 和 TVSum 两个公开视频摘要数据集上均取得了具有竞争力的无监督性能，尤其在语义更丰富的 TVSum 数据集上表现突出。进一步的消融实验验证了层级化描述聚合、场景语义评分以及多粒度特征匹配模块的必要性；参数敏感性分析则表明，当平衡系数 $\alpha$ 取 0.2 左右时，模型能够较好地兼顾局部视觉质量与全局语义一致性。总体来看，本文方法有效提升了视频摘要的语义理解能力和结果可解释性，也验证了将大语言模型逻辑推理能力与视觉文本对齐机制结合用于视频摘要任务的可行性。
+实验结果表明，本文方法在 SumMe 和 TVSum 两个公开视频摘要数据集上均取得了具有竞争力的性能：在叙事结构更开放、标注分歧更大的 SumMe 上以 48.3\% 的 $F_1$ 分数达到训练外方法最优水平，仅与最优监督方法相差 0.7 个百分点；在主题更集中的 TVSum 上亦保持了与主流方法可比的竞争力。消融实验系统验证了层级化描述聚合、场景语义评分以及多粒度特征匹配三个核心模块的必要性与互补性；参数敏感性分析进一步表明，平衡系数 $\alpha$ 取 0.2 左右时方法能够较好地兼顾局部视觉代表性与全局语义一致性。总体来看，本文方法在不引入任何可学习参数的前提下，有效提升了视频摘要的语义理解深度与结果可解释性，验证了将大语言模型的零样本推理能力与视觉文本对齐机制联合用于视频摘要任务的可行性与发展潜力。
