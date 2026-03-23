@@ -2,8 +2,8 @@
 
 \xchapter{相关理论基础与技术原理}{Relevant theoretical foundations and technical principles}
 
-本章主要介绍本文研究任务——基于大语言模型与多智能体的视频摘要技术所涉及的核心理论与技术框架。首先概述视频特征提取与跨模态对齐的基础理论，随后详细阐述大语言模型在文本聚合与语义评分中的应用，最后探讨基于
-Agent 的多智能体协作机制，为后续章节提出改进算法奠定理论支撑。
+本章主要介绍本文研究任务——基于大语言模型与多智能体的视频摘要技术所涉及的核心理论与技术框架。首先概述视频特征提取与跨模态对齐的基础理论，随后详细阐述大语言模型在文本聚合与语义评分中的应用，继而探讨基于
+Agent 的多智能体协作机制，最后对后续实验中统一使用的视频摘要评估指标与评测协议进行集中介绍，为后续章节提出改进算法奠定理论支撑。
 
 \xsection{视频特征提取与表征学习}{Video feature extraction and representation learning}
 % 本小结介绍传统视频处理的基本网络，主要介绍C3D、I3D。
@@ -209,4 +209,34 @@ H_t=\sum_{i=1}^{N}\omega_i h_i, \quad \omega_i=\frac{\exp(e_i)}{\sum_{j=1}^{N}\e
 其中，$N$ 表示参与协作的智能体数量，$\omega_i$ 表示第 $i$ 个智能体在结果聚合中的权重，$e_i$ 表示其当前输出的重要性评分，$H_t$ 表示融合后的全局语义表示。上述过程说明，多 Agent 协作的关键在于通过角色分工与加权聚合实现局部能力向全局决策能力的转化。
 
 相较于依赖单智能体独立完成全部推理流程的方法，多 Agent 协作机制具有更强的任务分解能力、并行处理能力与容错能力。该方法能够使不同智能体分别聚焦于规划、执行、验证和反馈等专门环节，从而降低单一路径推理失误对整体结果的影响。同时，通信与聚合机制有助于形成跨角色的互补信息流，提高复杂场景下的决策一致性与语义完备性。因此，多 Agent 协作机制更适用于多约束、多阶段和高复杂度的智能分析任务，并为构建可扩展的智能系统组织结构提供了理论支撑。
+
+\xsection{视频摘要评估指标}{eval}
+
+由于本文第三章与第四章的实验均在相同的公开数据集上展开，且采用统一的评估体系，本节对视频摘要任务中使用的核心评估指标与评测协议进行集中介绍，以避免在后续各章中重复阐述。
+
+本文采用视频摘要领域最为通用的 $F_1$-Score 作为核心定量评估指标，用以衡量模型生成摘要与人工标注摘要之间的一致性。
+
+视频摘要任务的最终输出为一个与原视频等长的二值向量，其中值为 1 的位置表示对应帧被选入摘要，值为 0 则表示被排除。设模型生成的二值摘要向量为 $\mathbf{S}_{\mathrm{sys}}$，某一标注者给出的参考摘要向量为 $\mathbf{S}_{\mathrm{gt}}$，二者的元素取值均属于 $\{0,1\}$。在此基础上，精确率（Precision）与召回率（Recall）分别定义为
+\begin{equation}
+  P = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{sys}}|}, \qquad
+  R = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{gt}}|},
+\end{equation}
+式中，$P$——精确率；$R$——召回率；$\mathbf{S}_{\mathrm{sys}}$——模型生成的二值摘要向量；$\mathbf{S}_{\mathrm{gt}}$——人工参考摘要向量；$|\cdot|$——集合的基数。
+其中 $|\cdot|$ 表示集合的基数，$\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}$ 为模型所选帧与标注所选帧的交集。精确率 $P$ 反映模型所选帧中实际属于参考摘要的比例，召回率 $R$ 则反映参考摘要中被模型成功召回的比例。二者的调和平均即为 $F_1$ 分数：
+\begin{equation}
+  F_{1}= \frac{2PR}{P + R}.
+\end{equation}
+式中，$F_1$——精确率与召回率的调和平均指标；$P$——精确率；$R$——召回率。
+
+由于两个数据集均包含多位标注者的独立标注，单一参考摘要无法完整反映视频摘要任务固有的主观性。针对不同数据集的标注特点，领域内分别采用两种评估协议。对于 SumMe 数据集，将模型摘要与每位标注者的参考摘要逐一计算 $F_1$ 分数后取最大值，该协议称为 Max $F_1$-Score：
+\begin{equation}
+  F_1^{\max}(v) = \max_{u \in \mathcal{U}_v} F_1(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \mathbf{S}_{\mathrm{gt}}^{(v,u)}),
+\end{equation}
+式中，$F_1^{\max}(v)$——视频 $v$ 在 SumMe 协议下的最大 $F_1$ 分数；$\mathcal{U}_v$——视频 $v$ 的标注者集合；$\mathbf{S}_{\mathrm{sys}}^{(v)}$——视频 $v$ 的模型摘要；$\mathbf{S}_{\mathrm{gt}}^{(v,u)}$——标注者 $u$ 给出的参考摘要。
+其中 $\mathcal{U}_v$ 为视频 $v$ 的标注者集合，$\mathbf{S}_{\mathrm{gt}}^{(v,u)}$ 为标注者 $u$ 给出的参考摘要。对于 TVSum 数据集，先将多位标注者的逐帧重要性评分取均值并二值化为参考摘要，再与模型输出计算 $F_1$ 分数，该协议称为 Avg $F_1$-Score：
+\begin{equation}
+  F_1^{\mathrm{avg}}(v) = F_1\!\big(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)}\big), \qquad \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)} = \mathrm{Binarize}\!\Big(\frac{1}{|\mathcal{U}_v|}\sum_{u \in \mathcal{U}_v}\mathbf{r}^{(v,u)}\Big)
+\end{equation}
+式中，$F_1^{\mathrm{avg}}(v)$——视频 $v$ 在 TVSum 协议下的平均 $F_1$ 分数；$\bar{\mathbf{S}}_{\mathrm{gt}}^{(v)}$——由多位标注者评分聚合得到的参考摘要；$\mathbf{r}^{(v,u)}$——标注者 $u$ 给出的帧级重要性评分向量；$\mathrm{Binarize}(\cdot)$——二值化操作。
+其中 $\mathbf{r}^{(v,u)}$ 为标注者 $u$ 给出的帧级重要性评分向量，$\mathrm{Binarize}(\cdot)$ 为按阈值二值化操作。最终，在各数据集上对所有视频的对应 $F_1$ 指标取均值即得总体评估分数。本文严格遵循上述协议——SumMe 报告 Max $F_1$-Score，TVSum 报告 Avg $F_1$-Score——以确保与现有方法具有公平可比性。此外，本文还基于帧级预测分数与人类评分序列之间的一致性，计算 Spearman 秩相关系数 $\rho$ 与 Kendall 秩相关系数 $\tau$ 作为辅助评估指标，用于衡量模型对相对重要性排序的保持能力。
 

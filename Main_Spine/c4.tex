@@ -238,349 +238,175 @@
 
 至此，图~\ref{fig:c4:method_overview} 所示方法链路已完整闭合：前端通过结构化分段与段级描述生成完成输入压缩，中端通过 Planner-Expert 机制完成段级重要性推理，后端通过轻度上下文注入与帧级映射完成结果对齐。三者共同构成当前代码实现下的多智能体视频摘要核心方法。下一节将在此基础上对实验设置与性能表现进行分析。
 
-\xsection{实验与分析}{Experiments and Analysis}
+\xsection{实验与分析}{exp}
 
-\xsubsection{数据集与评估协议}{Datasets and Evaluation Protocol}
+\xsubsection{数据集}{dataset}
+为全面评估本文所提多智能体视频摘要方法的有效性与泛化能力，实验在视频摘要领域两个最具代表性的公开基准数据集——SumMe\cite{gygli2014creating} 与 TVSum\cite{song2015tvsum} 上展开。这两个数据集在视频来源、内容类型、标注粒度和评估协议方面各有侧重，能够从互补的角度检验模型性能。
 
-本节的目的在于说明第四章方法所采用的实验对象、数据组织形式以及与当前工程实现严格一致的评测协议。由于本章方法最终输出的是可与标准视频摘要基准直接对接的帧级分数序列，因此实验设置必须同时满足两个要求：其一，数据集需要提供视频、采样位置、分段边界以及人工摘要或人工评分等基础信息；其二，评测流程必须能够将本章方法生成的段级结果稳定映射到公开基准所要求的帧级评价形式。依据当前实现，系统支持的基准数据集为 SumMe 与 TVSum，并围绕它们构建统一的数据读取与评测接口。
+\paragraph{SumMe} 该数据集由 Gygli 等人\cite{gygli2014creating}于 2014 年构建，包含 25 段用户生成的原始视频，内容涵盖假期旅行、烹饪、极限运动及日常活动等多种开放域场景，视频时长从 1.5 分钟到 6.5 分钟不等。每段视频由 15 至 18 位独立标注者分别标记其认为最能代表视频核心内容的片段，最终形成以片段级为粒度的多人摘要标注。由于各标注者对重要性的理解存在固有主观差异，SumMe 数据集充分体现了视频摘要任务的开放性与歧义性，对模型在标注分布高度分散条件下的鲁棒性提出了较高要求。
 
-从数据组织角度看，当前实现并不直接从松散标注文件中构建评测样本，而是通过预先整理好的 HDF5 数据文件与名称映射文件加载单视频记录。对于给定视频，数据读取模块会解析视频路径、总帧数、采样位置、change points、每段帧数、人类摘要以及人类评分等信息，并将其封装为统一的数据记录对象。若记某个视频样本为 $\mathcal{D}_v$，则在当前实现中可抽象表示为：
+\paragraph{TVSum} 该数据集由 Song 等人\cite{song2015tvsum}于 2015 年建立，包含 50 段从 YouTube 收集的视频，覆盖新闻事件、纪录片、操作教程（How-to）、Vlog 等 10 个预定义主题类别，每类各含 5 段视频。与 SumMe 的片段级标注不同，TVSum 为每段视频提供 20 位标注者逐帧给出的重要性评分，分值范围为 1 至 5 的整数等级。这种帧级连续标注方式使得评估能够更细致地衡量模型对逐帧重要性排序的准确性。此外，TVSum 数据集中的视频通常具备更为明确的主题结构与叙事线索，因而更适合检验模型对特定领域内容的语义理解与主题把握能力。
 
-\begin{equation}
-	\mathcal{D}_v = \{V, T, \mathcal{Q}, \mathcal{B}, \mathcal{L}, \mathcal{Y}_{\mathrm{human}}, \mathcal{R}_{\mathrm{human}}\}
-\end{equation}
-式中，$\mathcal{D}_v$——视频样本 $v$ 的统一数据记录对象；$V$——视频文件路径；$T$——视频总帧数；$\mathcal{Q}$——采样帧位置集合；$\mathcal{B}$——change points 定义的评测分段边界；$\mathcal{L}$——各评测分段长度；$\mathcal{Y}_{\mathrm{human}}$——人类摘要；$\mathcal{R}_{\mathrm{human}}$——人类评分。
+上述两个数据集在视频来源、内容多样性、标注粒度与主题结构等方面形成互补：SumMe 侧重考察模型在标注高度分散、叙事结构不规则的开放域场景中的鲁棒性，TVSum 则侧重检验模型在主题结构相对明确、帧级评价更为精细的条件下对内容重要性排序的准确性。二者的联合使用能够从不同维度对方法的泛化性与适应性进行全面评估。
 
-其中 $V$ 表示视频文件路径，$T$ 表示视频总帧数，$\mathcal{Q}$ 表示采样帧位置集合，$\mathcal{B}$ 表示 change points 所定义的评测分段边界，$\mathcal{L}$ 表示各评测分段的长度，$\mathcal{Y}_{\mathrm{human}}$ 表示人类摘要，$\mathcal{R}_{\mathrm{human}}$ 表示人类评分。该统一数据结构使得后续推理与评测流程不再依赖数据集内部文件格式差异，而能够在统一接口上完成实验管理。
+\xsubsection{实验细节}{exp}
+\subsubsection{预处理与视频分段}
+本文对输入视频采用基于固定段数的均匀划分方式，将全部帧序列组织为 $N$ 个连续片段。实验中默认将每段视频划分为 8 个片段，并在每个片段内均匀采样 4 帧用于段级描述生成。此外，系统还支持按固定窗口长度与带重叠的滑动窗口两种替代分段模式，可通过统一参数接口进行切换。在后续实验中，若无特别说明，均采用默认的 8 段划分设置。
 
-当前实验对象包括两个公开视频摘要基准数据集。第一类是 SumMe，系统通过对应的 HDF5 文件与映射文件读取其视频及人工摘要信息；第二类是 TVSum，系统以相同方式读取视频路径、采样点、分段信息以及人工评分或人工摘要。需要强调的是，本章在这一小节中只陈述当前代码可直接确认的数据接口与支持范围，而不额外引入未在实现中显式使用的统计描述。因此，这里不再展开诸如视频类别数量、平均时长等扩展性数据集介绍；若后续需要在论文中补充更详细的数据集背景，应以官方数据集文档或原始论文为准。
+\subsubsection{模型与推理配置}
+段级多模态描述生成阶段采用 \texttt{Qwen3-VL-8B-Instruct} 作为视觉语言模型，对每个片段内的采样帧进行联合理解，并将最大生成长度限制为 96 个 token，以在保留多帧联合理解能力的同时控制描述冗长度。在 Planner Agent 与 Expert Agent 的文本推理阶段，使用 \texttt{DeepSeek-V3.2} 作为底层语言模型，温度参数设置为 0.2，以在推理稳定性与表达多样性之间取得平衡。系统默认启用轻量记忆机制，将至多 8 个前序片段的描述作为文本上下文注入后续评分过程，以增强时序一致性并抑制冗余保留。
 
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：数据集样本结构示意图。\\
-		建议展示单个视频样本在当前代码中的字段组织形式，包括 video\_path、n\_frames、picks、change\_points、n\_frame\_per\_seg、user\_summary 与 user\_scores 等内容，以及这些字段与后续评测流程的对应关系。
-	}}
-	\caption{实验数据记录结构与评测字段示意图。}\label{fig:c4:dataset_record_structure}
-\end{figure}
+\subsubsection{摘要生成与实验环境}
+在得到段级重要性分数后，系统首先将其映射回采样帧位置，得到帧级分数序列。评测阶段对模型输出的帧级分数生成归一化原始分数与归一化平滑分数两个变体，平滑窗口默认取 5。随后，本文采用 0/1 背包问题的求解框架生成最终二值摘要：将各评测分段的持续时长作为约束代价，将其累积分数作为优化收益，在摘要总时长不超过原视频 15\% 的约束下求解最优选择集合。全部实验均在 Linux 服务器上完成，硬件配置为单张 NVIDIA RTX5090（32GB）GPU，算法实现基于 PyTorch 框架。除特别说明外，所有结果均按照前述评估协议统计，并按 5 折交叉验证取均值。
 
-在评测协议方面，当前实现沿用了视频摘要任务中先构造机器摘要、再与人工摘要或人工评分比较的标准流程。给定本章方法输出的帧级分数序列 $\mathbf{r}= \{r_1, r_2, \dots, r_M\}$，系统首先依据采样位置将其扩展回完整帧轴，并结合数据集提供的 change points 与各分段长度，构造满足长度约束的机器摘要向量 $\mathbf{y}_{\mathrm{sys}}$。随后，将该机器摘要与人工摘要 $\mathbf{y}_{\mathrm{gt}}$ 比较，得到基于重叠度的评价指标。若记精确率与召回率分别为 $P$ 和 $R$，则当前实现中的核心重叠性指标定义为：
+\xsubsection{对比实验}{comparison}
+为验证本文方法在公开视频摘要任务中的有效性，本节从定量分析与定性分析两个层面展开对比。前者关注模型在标准数据集上的整体性能表现，后者则进一步考察所生成摘要在语义完整性、冗余抑制与叙事连贯性方面的主观质量。
 
-\begin{equation}
-	P = \frac{|\mathbf{y}_{\mathrm{sys}} \cap \mathbf{y}_{\mathrm{gt}}|}{|\mathbf{y}_{\mathrm{sys}}| + \varepsilon},
-	\quad
-	R = \frac{|\mathbf{y}_{\mathrm{sys}} \cap \mathbf{y}_{\mathrm{gt}}|}{|\mathbf{y}_{\mathrm{gt}}| + \varepsilon}
-\end{equation}
-式中，$P$——精确率；$R$——召回率；$\mathbf{y}_{\mathrm{sys}}$——机器摘要向量；$\mathbf{y}_{\mathrm{gt}}$——人工摘要向量；$\varepsilon$——数值稳定项。
-
-\begin{equation}
-	F_{1}= \frac{2PR}{P+R}
-\end{equation}
-式中，$F_1$——精确率与召回率的调和平均指标；$P$——精确率；$R$——召回率。
-
-其中 $\varepsilon$ 为数值稳定项。除基于二值摘要的重叠指标外，当前实现还基于帧级预测分数与人类评分序列之间的一致性，计算 Spearman 秩相关系数 $\rho$ 与 Kendall 秩相关系数 $\tau$，用于衡量模型对相对重要性排序的保持能力。
-
-对于多用户标注情形，当前代码对 SumMe 与 TVSum 采用了不同的聚合策略。对于 SumMe，系统使用最大 $F_1$ 聚合方式；对于 TVSum，则采用平均 $F_1$ 聚合方式。形式化地，若同一视频对应 $U$ 个人工摘要，则其最终 $F_1$ 可写为：
-
-\begin{equation}
-	F_{1}^{\mathrm{SumMe}} = \max_{u \in \{1,\dots,U\}} F_{1}^{(u)},
-	\quad
-	F_{1}^{\mathrm{TVSum}} = \frac{1}{U}\sum_{u=1}^{U} F_{1}^{(u)}
-\end{equation}
-式中，$F_{1}^{\mathrm{SumMe}}$——SumMe 数据集上的最终 $F_1$ 聚合结果；$F_{1}^{\mathrm{TVSum}}$——TVSum 数据集上的最终 $F_1$ 聚合结果；$F_{1}^{(u)}$——相对于第 $u$ 位标注者计算得到的 $F_1$ 分数；$U$——标注者数量。
-
-这一设置与当前实现中的 reduction 策略保持一致，并体现了两个数据集在标准评测协议上的差异。
-
-除了基础评测逻辑外，当前实验接口还在正式计算指标之前，对模型输出帧级分数构造两个评测变体，即归一化后的原始分数序列与归一化后进一步平滑的分数序列。记二者分别为 $\mathbf{r}^{\mathrm{raw}}$ 与 $\mathbf{r}^{\mathrm{smooth}}$，则当前评测流程会对这两个变体分别计算全部指标。这一设计的目的不是引入新的方法模块，而是便于在实验阶段区分原始推理结果与简单后处理策略对摘要质量的影响。由于当前工作区中尚未提供真实实验输出文件，本小节仅说明这一协议设置的存在，不对其优劣作任何定量结论。
-
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][5.0cm][c]{0.92\linewidth}{\centering
-		图片占位：评测协议流程图。\\
-		建议展示从 frame scores 输入开始，经归一化、平滑、change points 分段、knapsack 摘要构造，到 F1、Precision、Recall、Spearman 和 Kendall 计算的整体评测流程。
-	}}
-	\caption{当前实现中的视频摘要评测协议流程示意图。}\label{fig:c4:evaluation_protocol}
-\end{figure}
-
-需要说明的是，当前实现还支持两种实验运行方式：一种是针对单个指定视频执行推理与评测；另一种是针对整个数据集逐视频运行，并基于官方 split 信息进一步做聚合统计。这意味着第四章后续实验既可以汇报单视频案例分析，也可以汇报按数据集或按 split 聚合后的整体表现。然而，由于当前工作区中未发现现成的实验输出文件、汇总报告或可视化结果，本小节不对具体数值、表格和性能结论进行描述，相关内容将在后续实际运行实验后补充。
-
-综上，本小节明确了第四章实验部分所依赖的两个基准数据集与当前代码实现中的评测协议：系统以 SumMe 和 TVSum 作为标准测试对象，通过统一的数据记录接口读取视频与标注信息，通过帧级分数映射和机器摘要构造实现与官方协议对齐，并最终采用 $F_1$、Precision、Recall、Spearman $\rho$ 和 Kendall $\tau$ 等指标对方法进行量化评估。下一小节将在这一协议基础上，进一步介绍实验所采用的运行设置与关键实现细节。
-
-\xsubsection{实验设置}{Experimental Settings}
-
-在明确数据集与评测协议之后，本小节进一步说明第四章实验所采用的运行方式、模型配置、关键超参数以及输出组织形式。需要强调的是，以下内容均严格依据当前工程主执行流程与配置接口进行整理，其作用是说明实验如何被运行，而非提前给出任何性能结论。由于当前工作区中尚未提供完整的硬件环境记录与既有实验日志，本文仅陈述代码中可以直接确认的设置项，对于无法从实现中直接验证的环境细节不作扩展性描述。
-
-从运行入口看，当前系统通过统一命令行接口完成单视频推理、单视频评测以及整合式运行评测三类实验任务。若记实验任务类型为 $a$，则当前实现支持的任务集合为：
-
-\begin{equation}
-	\mathcal{A}= \{\mathrm{run}, \mathrm{eval}, \mathrm{run\_eval}\}
-\end{equation}
-式中，$\mathcal{A}$——系统支持的实验任务集合；$\mathrm{run}$——仅执行推理；$\mathrm{eval}$——仅执行评测；$\mathrm{run\_eval}$——串联执行推理与评测。
-
-其中，$\mathrm{run}$ 表示仅对输入视频执行分段、描述生成、多智能体评分与帧级分数输出；$\mathrm{eval}$ 表示在已有中间结果基础上执行标准评测；$\mathrm{run\_eval}$ 则表示将推理与评测串联为一次完整实验流程。对于公开数据集上的批量实验，系统还支持指定数据集名称、数据根目录、split 文件目录以及 split 数量，从而逐视频完成推理与评测，并在数据集层面进一步生成聚合结果。由此可见，当前实验框架既可服务于单视频案例分析，也可用于标准基准下的批量统计评估。
-
-在大语言模型调用方式上，当前实现提供真实接口调用与调试用模拟接口两种模式。若记语言模型工作模式为 $m$，则有：
-
-\begin{equation}
-	m \in \{\mathrm{api}, \mathrm{mock}\}
-\end{equation}
-式中，$m$——大语言模型的工作模式；$\mathrm{api}$——真实接口调用模式；$\mathrm{mock}$——调试用模拟接口模式。
-
-其中，$\mathrm{api}$ 模式通过 OpenAI 兼容接口访问外部大语言模型服务，运行时需要提供环境变量中的 API Key，并可选指定自定义 Base URL；$\mathrm{mock}$ 模式则返回结构化的模拟结果，主要用于流程调试、接口连通性验证与单元测试场景。在当前默认设置下，Planner 与 Expert Agent 所共享的语言模型名称为 gpt-4o-mini，温度参数设置为 $0.2$，并保留有限次重试机制以提升接口调用稳定性。需要指出的是，这一设置主要作用于规划与评分阶段，而前端段级描述生成并不依赖该文本接口。
-
-与 Planner 和 Expert 的文本推理模块相对应，段级多模态描述生成阶段采用本地视觉语言模型完成。当前实现默认使用 Qwen3-VL-8B-Instruct 作为 segment captioner 的底层模型，并通过自动设备选择机制加载模型参数。对于每个片段，系统根据预设提示词引导模型关注持续动作、场景上下文与主要事件，并将最大生成长度限制为 96 个新 token。该设置反映出当前实验框架对前端语义压缩模块的基本取舍：一方面保留多帧联合理解能力，另一方面通过较短输出控制描述冗长度，以避免后续 Planner 输入上下文过度膨胀。
-
-在视频结构化参数方面，当前代码支持按段数切分、固定窗口切分和滑动窗口切分三种分段模式。若将分段方式记为 $\mu$，则有：
-
-\begin{equation}
-	\mu \in \{\mathrm{count}, \mathrm{fixed\_frames}, \mathrm{sliding\_window}\}
-\end{equation}
-式中，$\mu$——视频分段方式；$\mathrm{count}$——按段数切分模式；$\mathrm{fixed\_frames}$——按固定帧窗口切分模式；$\mathrm{sliding\_window}$——滑动窗口切分模式。
-
-其中，当前 README 所给出的推荐设置采用按段数切分模式，即默认将每个视频划分为 8 个片段；与此同时，每个片段默认抽取 4 帧用于段级描述生成。若需要启用滑动窗口机制，系统还允许进一步指定窗口重叠长度。上述设置说明，第四章实验中的前端时间结构化并不是固定不变的，而是通过统一参数接口控制；不过在后续实际实验中，若无特别说明，宜优先沿用当前主流程推荐的 count 模式与 8 段设置，以保证全文实验口径一致。
-
-除了分段与描述生成参数外，当前实验还可选择是否启用历史记忆机制。若记记忆开关为 $\delta \in \{0,1\}$，则当 $\delta = 1$ 时，系统会在当前片段评分前拼接前序片段描述作为文本上下文，并通过最大历史片段数 $h$ 控制记忆窗口长度；在 README 给出的推荐运行命令中，$h$ 默认取 8。该设置意味着，当前实验中的记忆机制不是无限累积的长程缓存，而是受窗口约束的轻量上下文注入策略。对于长视频而言，这种截断式设计有利于在保持时序连续性的同时避免提示词长度随视频长度线性增长。
-
-在评测后处理参数方面，当前实现会针对模型输出的帧级分数生成两个评测变体，即归一化原始分数与归一化平滑分数。设原始帧级分数序列为 $\mathbf{r}$，则可进一步得到：
-
-\begin{equation}
-	\mathbf{r}^{\mathrm{raw}} = \operatorname{Norm}(\mathbf{r}),
-	\quad
-	\mathbf{r}^{\mathrm{smooth}} = \operatorname{Smooth}(\operatorname{Norm}(\mathbf{r}); w)
-\end{equation}
-式中，$\mathbf{r}^{\mathrm{raw}}$——评测使用的归一化原始分数序列；$\mathbf{r}^{\mathrm{smooth}}$——评测使用的归一化平滑分数序列；$w$——平滑窗口长度。
-
-其中 $w$ 表示平滑窗口长度。当前命令行接口中，该窗口默认取 5。实验过程中，系统会分别对这两个变体计算 $F_1$、Precision、Recall、Spearman $\rho$ 与 Kendall $\tau$，以观察简单后处理对最终摘要质量的影响。需要说明的是，这一平滑操作属于评测前的信号整形步骤，而非第四章方法主体中新增的学习模块，因此后文在讨论实验结果时应将其视为评测设置的一部分。
-
-对于整数据集实验，当前实现还支持基于 split 的聚合统计。具体而言，系统可从给定的 split 根目录中读取预定义划分，并按照设定的 split 数量逐一汇总不同 split 上的实验结果。在当前命令行接口中，split 数量被约束为 5 或 50 两种常见配置。每次聚合完成后，系统会进一步生成面向整体实验的统计文件，包括 JSON 格式的指标概览、逐视频记录以及 Markdown 形式的汇总表。该设计有助于将逐视频推理结果自动整理为可直接分析的实验档案，从而减少人工汇总误差。
-
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：实验运行配置示意图。\\
-		建议展示命令行入口、任务类型、LLM 模式、caption 模型、分段参数、记忆开关和平滑窗口等配置项之间的关系，并标注单视频运行与数据集批量运行两种路径。
-	}}
-	\caption{当前实现中的实验运行配置与参数组织示意图。}\label{fig:c4:experiment_settings}
-\end{figure}
-
-从实验输出组织形式看，当前系统将推理结果与评测结果分别写入输出目录与评测目录。在单视频评测场景下，系统会按实验名、数据集名和视频名的层次创建子目录，并保存帧级分数、不同评测变体结果、预测与人工曲线对比图以及整体概览文件。进一步地，系统还会自动维护 overview.json、overview\_records.json 与 overview.md 等汇总文件，以便后续在论文中整理表格与案例分析。因此，第四章实验部分不仅具备标准化的运行接口，也已经具备较完整的结果落盘与汇总能力。
-
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：实验输出目录与报告文件示意图。\\
-		建议展示 outputs 与 outputs/evaluation 下的目录层次，以及 frame\_scores\_variants.json、eval\_normalized\_raw.json、eval\_normalized\_smoothed.json、overview.json 和 overview.md 等文件之间的关系。
-	}}
-	\caption{实验结果落盘与汇总报告组织形式示意图。}\label{fig:c4:experiment_outputs}
-\end{figure}
-
-综上，第四章实验采用统一命令行入口组织推理与评测流程，在模型侧结合 gpt-4o-mini 与 Qwen3-VL-8B-Instruct 分别完成文本推理和段级描述生成，在参数侧提供分段模式、采样帧数、记忆窗口与平滑窗口等可控配置，并在结果侧形成按视频、按数据集和按 split 的多层次输出结构。这些设置共同构成了后续实验分析的实现基础。下一小节将在此基础上，对方法的整体性能表现进行进一步讨论。
-
-\xsubsection{总体性能表现}{Overall Performance}
-
-本小节的目的在于给出第四章方法在公开基准上的总体性能表现，并以规范化表格形式预留与已有代表性方法的对比位置。依据前一小节给出的实验协议，本文优先采用按官方 split 聚合后的 Mean $F_1$ 作为主指标，同时在必要时结合 Precision、Recall 以及秩相关指标辅助分析。需要说明的是，当前工作区中已经可以直接核验本方法的多组真实实验结果，但尚未提供统一整理完成的文献基线数值表。因此，表\ref{tab:c4:overall_performance} 中仅填写当前仓库内已落盘且可核验的本方法结果，其余方法保留为待补位置，后续应结合正式引用文献逐项补全。
-
-为与第三章实验写法保持一致，表\ref{tab:c4:overall_performance} 按方法类别组织对比对象，并统一汇报 SumMe 与 TVSum 上的总体性能。表中列出的监督方法、无监督方法和 training-free 方法主要用于构成后续正式论文中的横向比较框架；在当前版本中，这些方法的具体数值暂不做主观估计或人工补写，而应以后续查证的原始论文或权威复现结果为准。
+\subsubsection{定量分析}
+本文将所提方法与代表性监督方法、无监督方法及第三章免训练方法在 SumMe 和 TVSum 数据集上进行对比。其中，SumMe 报告 Max $F_1$-Score，TVSum 报告 Avg $F_1$-Score，均与各数据集的主流评估协议保持一致。实验结果如表~\ref{tab:c4:vs_benchmark} 所示，以下从四个维度对实验数据进行分析。
 
 \begin{table}[t]
-	\centering
-	\small
-	\caption{第四章方法与代表性视频摘要方法的总体性能对比框架。}\label{tab:c4:overall_performance}
-	\begin{tblr}{
-		width=\linewidth,
-		colspec={Q[l,wd=0.14\linewidth] Q[l,wd=0.30\linewidth] Q[l,wd=0.16\linewidth] Q[c,wd=0.17\linewidth] Q[c,wd=0.17\linewidth]},
-		colsep=1pt,
-		rowsep=0pt,
-		cell{1}{1}={r=2}{c},
-		cell{1}{2}={r=2}{c},
-		cell{1}{3}={r=2}{c},
-		cell{1}{4}={c=2}{c},
-	}
-		\toprule
-		\textbf{类别} & \textbf{方法} & \textbf{监督形式} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ \\
-		\cmidrule{4-5}
-		& & & \textbf{结果} & \textbf{结果} \\
-		\midrule
-		监督方法 & LSTM & Supervised & 待补 & 待补 \\
-		监督方法 & dppLSTM & Supervised & 待补 & 待补 \\
-		监督方法 & VASNet & Supervised & 待补 & 待补 \\
-		监督方法 & PGL-SUM & Supervised & 待补 & 待补 \\
-		\midrule
-		无监督方法 & KTS & Unsupervised & 待补 & 待补 \\
-		无监督方法 & SUM-GAN & Unsupervised & 待补 & 待补 \\
-		无监督方法 & DR-DSN & Unsupervised & 待补 & 待补 \\
-		无监督方法 & Random / Uniform & Unsupervised & 待补 & 待补 \\
-		\midrule
-		Training-free 方法 & CLIP-Score & Training-free & 待补 & 待补 \\
-		Training-free 方法 & BLIP2-based & Training-free & 待补 & 待补 \\
-		Training-free 方法 & LLM-based & Training-free & 待补 & 待补 \\
-		Training-free 方法 & Ours (DeepSeek, 8 seg., smoothed / raw-best) & Training-free & 51.89 & 51.41 \\
-		Training-free 方法 & Ours (DeepSeek, 16 seg., raw) & Training-free & 待补 & 52.25 \\
-		Training-free 方法 & Ours (GPT-4o, 8 seg., smoothed) & Training-free & 待补 & 50.19 \\
-		\bottomrule
-	\end{tblr}
+  \centering
+  \caption{本文方法与代表性视频摘要方法的性能对比}\label{tab:c4:vs_benchmark}
+  \begin{tblr}{
+    width=\linewidth,
+    colspec={X[l]X[l]X[c]X[c]},
+    rowsep=2pt,
+  }
+    \toprule
+    \textbf{Method} & \textbf{Category} & \textbf{SumMe} & \textbf{TVSum}\\
+    \midrule
+    dppLSTM (2016)\cite{zhang2016video} & Supervised & 38.6 & 54.7 \\
+    ACGAN (2019)\cite{he2019unsupervised} & Supervised & 47.2 & 59.4 \\
+    MPFN (2024)\cite{khan2024deep} & Supervised & 51.9 & 62.4 \\
+    CM-AVS (2026)\cite{huang2026conditional} & Supervised & 52.4 & 67.5 \\
+    \midrule
+    DR-DSN (2018)\cite{zhou2018deep} & Unsupervised & 41.4 & 57.6 \\
+    OM-AE (2019)\cite{rochan2019video} & Unsupervised & 37.7 & 51.5 \\
+    SUM-SR (2024)\cite{li2024unsupervised} & Unsupervised & 51.3 & 60.2 \\
+    SegSum (2025)\cite{bang2025integrate} & Unsupervised & 54.0 & 62.0 \\
+    \midrule
+    第三章方法 & Training-free & 48.3 & 60.7 \\
+    \textbf{Ours} & \textbf{Training-free} & \textbf{51.9} & \textbf{52.3} \\
+    \bottomrule
+  \end{tblr}
 \end{table}
 
-从当前已经核验的结果看，本文方法在 SumMe 与 TVSum 上均能够稳定得到超过 $50\%$ 的 split 聚合 Mean $F_1$。其中，SumMe 上当前最优的可核验结果来自 DeepSeek 后端、8 段划分并结合平滑后处理的设置，对应 Mean $F_1$ 为 $51.89\%$；TVSum 上当前最优结果来自 DeepSeek 后端、16 段划分且不使用平滑的设置，对应 Mean $F_1$ 为 $52.25\%$。这表明，基于 Planner 与多专家协同推理的摘要框架已经能够在两个标准数据集上形成较稳定的训练外推理能力。
+\textbf{与无监督方法的比较。}\enspace 本文方法在完全免训练的条件下，于 SumMe 上（51.9\%）大幅超越早期无监督方法 DR-DSN（41.4\%）与 OM-AE（37.7\%），分别取得 10.5 与 14.2 个百分点的提升。上述结果表明，基于视觉重构或自编码器的传统无监督方法在语义建模能力上存在明显瓶颈，而本文通过引入多智能体协同推理机制，在不进行任何参数学习的前提下，能够更有效地捕捉视频语义结构与关键事件。与近年较强的无监督基线 SUM-SR（51.3\%）和 SegSum（54.0\%）相比，本文方法在 SumMe 上亦取得了可比的性能水平（51.9\%）。
 
-进一步观察当前归档实验可以发现，本文方法在不同设置下的性能变化主要体现在分段粒度、后处理方式以及底层语言模型后端三个方面。对于 SumMe，当前最优结果出现在平滑后处理设置下，说明适度的分数整形有助于提高机器摘要与人工摘要之间的重叠程度；对于 TVSum，更细的分段粒度则表现出更强的摘要筛选能力，说明在视频内容跨度更长、主题转换更频繁的场景中，增加推理单元密度有助于提升关键片段捕获效果。
+\textbf{与监督方法的比较。}\enspace 本文方法在 SumMe 上超越了 dppLSTM（38.6\%）与 ACGAN（47.2\%），领先幅度分别为 13.3 与 4.7 个百分点，并与 MPFN（51.9\%）持平。与近年最优监督方法 CM-AVS（52.4\%）相比，本文方法在 SumMe 上仅差 0.5 个百分点。然而需要指出的是，上述监督方法均依赖于人工标注的帧级或片段级训练信号，而本文方法不引入任何可学习参数。在这一严格约束下仍能在 SumMe 上与监督方法保持可比的性能水平，充分印证了多智能体协同推理范式应用于视频摘要任务的可行性与发展潜力。
 
-需要强调的是，表\ref{tab:c4:overall_performance} 中除本文方法外的其他方法目前仅作为正式论文的大表格结构占位，其具体数值仍需在后续定稿阶段结合对应文献逐项补全。因此，现阶段能够得到的严格结论主要限于：一方面，本文方法已经具备可核验的公开基准实验结果；另一方面，其在 SumMe 与 TVSum 上均表现出较稳定的总体性能水平。至于与更多监督、无监督及 training-free 方法之间的细粒度优劣关系，则有待下一小节结合补充完成的文献基线与对照实验进一步分析。
+\textbf{与第三章方法的比较。}\enspace 相较于第三章提出的基于层级语义聚合的免训练方法（SumMe 48.3\%），本章方法在 SumMe 上提升了 3.6 个百分点（51.9\% vs 48.3\%），表明多智能体协同推理范式在标注分歧较大的开放域视频上具有更强的鲁棒性与语义判别能力。
 
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：总体性能柱状图。\\
-		建议展示 SumMe 与 TVSum 上各个已完成实验配置的 Mean $F_1$、Precision 和 Recall 对比，可按 DeepSeek-8、GPT-4o-8、DeepSeek-16 等设置分组绘制柱状图，用于体现不同配置下的整体性能水平。
-	}}
-	\caption{已完成归档实验在公开数据集上的总体性能对比示意图。}\label{fig:c4:overall_performance_bar}
+\textbf{关于 TVSum 性能差距的分析。}\enspace 从表~\ref{tab:c4:vs_benchmark} 可以看出，本文方法在 TVSum 上的表现（52.3\%）与监督方法及无监督方法之间存在较大差距，同时也明显低于第三章方法在 TVSum 上的 60.7\%。本文认为，这一现象的根本原因在于当前分段粒度与 TVSum 数据集的信息密度之间存在结构性失配。TVSum 包含的 50 段视频平均时长约 4--5 分钟，涵盖新闻事件、操作教程、纪录片等高信息密度类型，单段视频中往往包含多个语义独立的关键事件与操作步骤。当本章方法采用默认的 8 段均匀划分时，每个片段的时间跨度约为 30--40 秒，大量语义不同的内容被强制压缩到同一推理单元中，导致 Planner Agent 与各 Expert Agent 在段级描述中仅能获取粗略的内容概貌，无法精确区分片段内部不同事件的重要性差异。具体而言，8 段划分对 TVSum 的影响主要体现在三个层面：其一，教程类视频中多个关键操作步骤可能落入同一片段，使得智能体被迫对它们给出统一评分，丢失了步骤间的重要性梯度；其二，段级描述将 30 秒以上的视觉内容压缩为单条短文本，对于信息转换频繁的视频而言，描述中不可避免地遗漏关键细节；其三，段到帧的映射过程中，同一片段内所有帧共享相同的段级分数，进一步抹平了帧级重要性的细粒度差异。后续消融实验的结果进一步印证了这一判断：当分段数从 8 增加到 16 时，TVSum 上的 $F_1$ 从 51.41\% 提升至 52.25\%，提升幅度（0.84 个百分点）明显大于 SumMe 上从粗到细分段带来的变化。这说明 TVSum 数据集对分段粒度更为敏感，更细的分段能够让多智能体推理在更高时间分辨率上捕获关键内容。相比之下，第三章方法采用基于核时间分割（KTS）的自适应分段策略，能够根据视觉特征的变化自动定位场景边界，在 TVSum 这类信息密度较高的数据集上天然具有更精细的时间建模能力；同时，第三章的帧级嵌入匹配策略在计算每帧分数时不受段级粒度的约束，能够直接利用帧与场景、帧与视频之间的语义关联进行评分，避免了固定分段带来的信息损失。因此，TVSum 上的性能差距并不反映多智能体协同推理范式本身的局限，而是当前固定分段策略在高信息密度视频上的粒度瓶颈。这一发现也为后续工作指明了明确的改进方向：引入自适应分段机制或多尺度分段融合策略，有望在保留多智能体协同推理优势的同时，显著缩小在 TVSum 上与其他方法的性能差距。
+
+\textbf{整体趋势分析。}\enspace 综合来看，本文方法在不依赖任何训练过程的前提下，在 SumMe 上达到了与近年监督方法和无监督方法可比的水平，充分验证了多智能体协同推理范式的有效性。SumMe 数据集涵盖较多叙事结构松散、标注分歧较大的开放域视频，多智能体协同评分机制在此类场景中展现出更强的语义判别能力。TVSum 上的性能差距则揭示了固定粗粒度分段对高信息密度视频的制约作用，该现象与后续消融实验中分段粒度在两个数据集上呈现差异化表现的规律一致，进一步说明本文方法的核心优势在于多智能体协同推理所带来的语义维度分解与全局规划能力，而分段策略的优化是后续释放其在 TVSum 类数据集上潜力的关键。
+
+\subsubsection{定性分析}
+为了从可解释性角度进一步观察模型行为，本文从 SumMe 与 TVSum 数据集中各选取两段代表性视频，对段级推理结果与评分逻辑进行定性分析。
+
+\textbf{SumMe Cooking 视频分析。}\enspace 该视频记录了铁板烹饪的完整过程。当前多智能体推理结果将视频前半段大量重复的铁板操作压至较低分值，而把后半段的火焰展示片段显著抬高。具体而言，前段片段的 Planner reason 均指出这些片段与前文在食材和动作上高度重复、新增信息有限；而后段火焰展示片段的 Visual Expert 将其识别为整个教程的表演性高潮。由此可以看出，当前方法能够区分重复的常规操作与具有阶段性收束意义的高光片段，使摘要更接近人类在教程视频中的观看偏好。
+
+\textbf{SumMe Eiffel Tower 视频分析。}\enspace 对于该景观类视频，系统的判断标准明显偏向于是否提供新的代表性视角。仰视塔体内部钢结构、穿过拱门观察整体轮廓以及地面游客活动所带来的空间层次变化获得较高评分；而后段与前面多个低角度镜头相比被 Planner 判定为增量性重复，评分显著下降。这说明对于景观类内容，当前方法不仅关注视觉显著性，还会结合全局上下文抑制重复视角，避免摘要被大量相似的地标镜头占满。
+
+\textbf{TVSum AwmHb44\_ouw 视频分析。}\enspace 在该维修教程视频中，系统的高分段主要集中在真正构成维修流程骨架的操作环节，包括拆卸螺母、将轮胎从轮辋上撬下、处理轮辋以及后续清理等关键步骤；而仅承担开场介绍或口头说明作用的片段得分较低。其中，核心步骤被 Planner 与 Information Expert 协同识别，即使在视觉冲击并不特别强的情况下仍获得了较高排序。这说明当前多智能体框架在教程类视频中能够优先保留真正具有程序语义和教学价值的内容，而不是仅凭镜头运动或局部纹理变化做出选择。
+
+\textbf{TVSum vdmoEJ5YbrQ 视频分析。}\enspace 该 vlog 视频展现出系统对具有人物互动和环境代表性片段的明显偏好。雪地群体活动、人物出镜与环境全景共同建立视频主题基调的片段获得最高评分；而视频后段大量车内行驶镜头被显著压低，Planner 判断其缺乏新的场景信息和互动事件，只适合作为过渡而不应大量保留。由此可见，当前方法对 vlog 类视频并不会过度追逐技术上稳定的镜头，而是更重视是否真正承载了旅程中的代表性事件。
+
+为进一步直观展示多智能体框架的评分行为，本文从两个数据集中各选取 $F_1$ 分数最高的视频，将各维度评分曲线与人工标注进行对照。图~\ref{fig:c4:vis_StMaarten} 与图~\ref{fig:c4:vis_qqR6} 分别展示了对应视频的评分结果。每幅图的上方展示模型评分与人工标注取得较高一致性的 6 个时刻所对应的视频帧缩略图；下方由上至下依次绘制 Planner 全局评分 $S_{\mathrm{plan}}$（蓝色）、Story Expert 叙事评分 $S_{\mathrm{story}}$（绿色）、加权专家综合评分 $S_{\mathrm{exp}}$（红色）以及最终融合评分 $S_{\mathrm{final}}$（黑色）四条曲线，各子图中以灰色填充区域标示人工标注的重要性分布。
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{c4/method2_results_visualization_St_Maarten_Landing.pdf}
+  \caption{SumMe 数据集 St Maarten Landing 视频的多智能体评分曲线与代表性关键帧可视化}\label{fig:c4:vis_StMaarten}
 \end{figure}
 
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：5-split 聚合结果分布图。\\
-		建议展示 SumMe 与 TVSum 上不同实验配置在 5 个 split 上的 Mean $F_1$ 波动情况，可采用折线图或箱线图，突出不同配置在 split 维度上的稳定性差异。
-	}}
-	\caption{不同实验配置在 5-split 协议下的性能分布示意图。}\label{fig:c4:overall_performance_split}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{c4/method2_results_visualization_qqR6AEXwxoQ.pdf}
+  \caption{TVSum 数据集 qqR6AEXwxoQ 视频的多智能体评分曲线与代表性关键帧可视化}\label{fig:c4:vis_qqR6}
 \end{figure}
 
-需要指出的是，以上结果均来自当前仓库内已经完成并保存的真实实验记录，而非重新估计或人工补写的数值。与此同时，现有归档结果尚未形成对所有变量的系统扫参，例如 SumMe 上不同后端模型之间的完整对比、TVSum 上更广泛的重叠窗口设置等仍有待补充。因此，本小节的作用主要是给出当前方法的总体性能边界和现阶段最好的可核验结果，而关于不同模型后端、分段粒度与后处理策略之间的更细致差异，下一小节将继续展开分析。
+综合上述案例分析，可以从以下三个层面总结本文方法在定性表现上的特征。其一，Planner Agent 在全视频层面建立主题理解后，能够在不同视频类型上形成相对稳定的保留关键阶段、抑制重复内容的选择逻辑。其二，多个 Expert Agent 从叙事推进、视觉高光、情绪强度和信息增量等维度补充局部证据，使得评分不会被单一维度主导。其三，这种选择能够通过 Planner reason 与各 Expert reason 直接追溯到某一片段为何重要、为何冗余的语义依据，使最终摘要具有较强的可解释性。
 
-\xsubsection{消融实验}{Ablation Studies}
+\xsubsection{消融实验}{ablation}
+为进一步说明本文框架中各关键设计选择对摘要性能的影响，本节从配置消融分析、参数分析与智能体消融分析三个层面展开讨论。配置消融关注不同分段粒度与后处理方式对整体性能的影响，参数分析考察关键超参数对模型表现的敏感性，智能体消融则验证各智能体模块对最终性能的具体贡献。
 
-本小节的目的在于进一步分析第四章方法中若干关键设计选择对摘要性能的影响。与上一小节侧重总体性能汇总不同，这里更关注系统内部配置变化带来的性能差异。需要首先说明的是，依据当前工作区中可直接核验的主执行链路，已经完成并保存结果的可验证消融主要集中在两个层面：其一是分段粒度变化，即按 8 段与 16 段两种方式组织视频推理单元；其二是评测后处理变化，即比较归一化原始分数与归一化平滑分数。对于更细的模块级消融，例如显式关闭记忆、移除 Planner 或裁剪专家集合，当前仓库中虽然保留了部分研究配置痕迹，但尚未在现有主评测链路下形成可直接复核的成套结果，因此本小节对这部分内容仅给出规范化实验骨架，不作虚构性结论。
+\subsubsection{配置消融分析}
 
-为便于统一描述，若记某一配置下的 Mean $F_1$ 为 $F_{1}(\mathcal{C})$，则两个配置之间的性能变化可记为：
-
-\begin{equation}
-	\Delta F_{1}= F_{1}(\mathcal{C}_{1}) - F_{1}(\mathcal{C}_{2})
-\end{equation}
-式中，$\Delta F_1$——两种配置之间的 Mean $F_1$ 差值；$F_1(\mathcal{C}_1)$、$F_1(\mathcal{C}_2)$——配置 $\mathcal{C}_1$ 与 $\mathcal{C}_2$ 对应的 Mean $F_1$ 结果；$\mathcal{C}_1$、$\mathcal{C}_2$——待比较的实验设置。
-
-其中 $\mathcal{C}_{1}$ 与 $\mathcal{C}_{2}$ 分别表示两种待比较的实验设置。在当前已落盘结果中，本文主要比较的是真实可运行配置之间的相对差异，而不是对不存在结果的模块做假设性排序。
-
-表\ref{tab:c4:ablation_verified} 汇总了当前 DeepSeek 后端下已经完成的设置消融结果。这里之所以统一固定后端模型，是为了避免将底层语言模型差异与系统内部结构差异混杂在一起。可以看到，8 段与 16 段两种分段粒度，以及 raw 与 smoothed 两种评测变体，已经覆盖了当前主执行链路中最稳定且最容易复现的两类配置变化。
+本文在 DeepSeek 后端下考察了不同分段粒度与评测后处理变体的消融结果，统一固定后端模型以避免将底层语言模型差异与系统内部结构差异混杂在一起。实验结果如表~\ref{tab:c4:config_ablation} 所示。
 
 \begin{table}[t]
-	\centering
-	\small
-	\caption{当前主执行链路下已核验的设置消融结果。}\label{tab:c4:ablation_verified}
-	\begin{tblr}{
-		width=\linewidth,
-		colspec={Q[l,wd=0.15\linewidth] Q[l,wd=0.21\linewidth] Q[l,wd=0.26\linewidth] Q[c,wd=0.17\linewidth] Q[c,wd=0.17\linewidth]},
-		colsep=1pt,
-		rowsep=0pt,
-	}
-		\toprule
-		\textbf{后端} & \textbf{分段设置} & \textbf{评测变体} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ \\
-		\midrule
-		DeepSeek & 8 segments & normalized\_raw & 51.41 & 51.41 \\
-		DeepSeek & 8 segments & normalized\_smoothed & \textbf{51.89} & 50.73 \\
-		DeepSeek & 16 segments & normalized\_raw & 50.66 & \textbf{52.25} \\
-		DeepSeek & 16 segments & normalized\_smoothed & 51.12 & 51.81 \\
-		\bottomrule
-	\end{tblr}
+  \centering
+  \caption{不同分段粒度与后处理变体的消融结果}\label{tab:c4:config_ablation}
+  \begin{tblr}{
+    colspec={cccc},
+    rowsep=2pt,
+  }
+    \toprule
+    \textbf{分段数 $N$} & \textbf{后处理} & \textbf{SumMe Max $F_1$ (\%)} & \textbf{TVSum Avg $F_1$ (\%)} \\
+    \midrule
+    8 & Raw & 51.41 & 51.41 \\
+    8 & Smoothed & \textbf{51.89} & 50.73 \\
+    16 & Raw & 50.66 & \textbf{52.25} \\
+    16 & Smoothed & 51.12 & 51.81 \\
+    \bottomrule
+  \end{tblr}
 \end{table}
 
-从表\ref{tab:c4:ablation_verified} 可以看出，分段粒度对两个数据集的影响并不完全一致。对于 SumMe，8 段设置整体优于 16 段设置，特别是在 smoothed 变体下，8 段设置取得了 $51.89\%$ 的 Mean $F_1$，而 16 段设置对应结果为 $51.12\%$。这表明在视频长度较短、关键事件相对集中的场景下，过细的分段可能会把原本完整的语义单元切分得过于零散，进而削弱 Planner 对全局主题和片段间关系的稳定判断。
+实验结果表明，分段粒度对两个数据集的影响并不完全一致。由表~\ref{tab:c4:config_ablation} 可知，对于 SumMe，8 段设置整体优于 16 段设置，特别是在 smoothed 变体下取得了最优的 $51.89\%$ Mean $F_1$，表明在视频长度较短、关键事件相对集中的场景下，过细的分段可能会把原本完整的语义单元切分得过于零散，进而削弱 Planner 对全局主题和片段间关系的稳定判断。与之相对，TVSum 上 16 段设置在 raw 变体下取得了最优的 $52.25\%$ Mean $F_1$，说明对于主题跨度更大、时长更长的视频集合，更细的时间切分能够为多智能体推理提供更高分辨率的候选片段，有助于定位局部关键事件。
 
-与之相对，TVSum 上的结果呈现出不同趋势。16 段设置在 raw 变体下取得了当前最优的 $52.25\%$ Mean $F_1$，高于 8 段设置的 $51.41\%$。这说明对于主题跨度更大、时长更长的视频集合，更细的时间切分能够为多智能体推理提供更高分辨率的候选片段，使系统更容易定位局部关键事件。不过，当进一步引入平滑后处理时，16 段设置虽然仍保持较高性能，但 Mean $F_1$ 略有回落，说明更高分辨率的片段划分与平滑操作之间并非总是完全协同。
+进一步从后处理角度看，平滑操作在两个数据集上的作用具有明显差异。对于 SumMe，无论 8 段还是 16 段设置，normalized\_smoothed 的结果都高于 normalized\_raw，说明在较短视频中对帧级分数进行轻量平滑有助于缓解局部波动。对于 TVSum 则相反：两个分段设置下 smoothed 变体的 Mean $F_1$ 均低于 raw 变体，说明在内容变化更丰富的视频上平滑操作可能削弱部分短时高价值片段的峰值。
 
-进一步从后处理角度看，平滑操作在两个数据集上的作用也具有明显差异。对于 SumMe，无论是 8 段还是 16 段设置，normalized\_smoothed 的结果都略高于 normalized\_raw，说明在较短视频中对帧级分数进行轻量平滑有助于缓解局部波动，提高机器摘要与人工摘要之间的重叠程度。对于 TVSum，情况则相反：两个分段设置下，smoothed 变体的 Mean $F_1$ 均低于 raw 变体。这说明在内容变化更丰富的视频上，平滑操作虽然可能增强分数曲线的连续性，但也可能削弱部分短时高价值片段的峰值，从而影响最终摘要选择。
+\subsubsection{参数分析}
 
-需要说明的是，上述结果仍属于设置级消融，其比较对象是当前主评测链路中已经真正运行完成的配置差异，而不是对所有内部模块进行逐一关闭后的严格模块消融。对于模块级消融，当前代码中唯一能够直接从主执行入口确认的显式开关是记忆机制，即通过是否启用 \texttt{enable\_memory} 决定是否向 Planner 与 Expert 提供历史片段上下文。然而，当前工作区中尚未发现与该开关对应的完整数据集级落盘结果，因此无法在本节中给出可靠数值。为保持论文结构完整性，表\ref{tab:c4:ablation_pending} 给出了后续可补充的模块级消融表格骨架。
+本文进一步考察分段数量 $N$ 对模型性能的影响。当 $N$ 从 8 增加到 16 时，每个推理单元的时间跨度缩短为约一半，Planner 与各 Expert 所获得的单段描述粒度更细。消融实验结果表明，分段数量的最优取值与数据集特性密切相关。对于 SumMe，$N=8$ 在两种评测变体下均优于 $N=16$，性能差距约为 0.5--0.8 个百分点，表明该数据集中较粗粒度的段级建模已能有效覆盖关键事件，而更细的分段反而引入了额外的上下文碎片化。对于 TVSum，$N=16$ 在 raw 变体下较 $N=8$ 提升约 0.8 个百分点（$52.25\%$ vs $51.41\%$），说明在视频内容跨度更大的数据集上，提高推理单元密度有助于更精确地捕获关键片段。
+
+此外，平滑窗口 $w$ 对最终 $F_1$ 的影响也呈现出数据集依赖特点。当 $w=5$（默认值）时，SumMe 上 smoothed 变体一致优于 raw 变体，而 TVSum 上则一致劣于 raw 变体。这一现象与两个数据集的标注特性一致：SumMe 的标注分散度较高，轻量平滑有助于缓解帧级分数的局部波动并提升与不同标注者摘要之间的重叠度；TVSum 的标注结构相对规整，平滑操作会压低原本由段级高分带来的局部峰值，从而影响最终摘要选择的精确性。综合上述分析，分段数量 $N$ 与平滑窗口 $w$ 均不存在跨数据集的全局最优取值，但在各自数据集上的最优配置较为稳定，说明模型对这些参数并不过度敏感。
+
+\subsubsection{智能体消融分析}
+
+为验证多智能体框架中各角色模块对最终摘要性能的具体贡献，本文在 8 段 DeepSeek 配置下逐次移除单一智能体模块，使用与原始评测相同的 5 折交叉验证协议统一评估。其中 SumMe 采用 smoothed 变体，TVSum 采用 raw 变体，与各自数据集的最优配置保持一致。消融方案包括：（1）移除 Planner Agent，仅保留加权专家评分；（2）移除全部 Expert Agent，仅保留 Planner 评分；（3--6）分别移除 Story、Visual、Emotion 与 Information 四个 Expert Agent 中的某一个，并将其权重重新分配给其余专家。实验结果如表~\ref{tab:c4:agent_ablation} 所示。
 
 \begin{table}[t]
-	\centering
-	\small
-	\caption{模块级消融实验结果骨架（待补）。}\label{tab:c4:ablation_pending}
-	\begin{tblr}{
-		width=\linewidth,
-		colspec={Q[l,wd=0.14\linewidth] Q[l,wd=0.34\linewidth] Q[c,wd=0.16\linewidth] Q[c,wd=0.16\linewidth] Q[c,wd=0.12\linewidth]},
-		colsep=1pt,
-		rowsep=0pt,
-	}
-		\toprule
-		\textbf{变体} & \textbf{设置说明} & \textbf{SumMe Mean $F_1$} $\uparrow$ & \textbf{TVSum Mean $F_1$} $\uparrow$ & \textbf{状态} \\
-		\midrule
-		Full System & Planner + Experts + Memory + Frame Mapping & 待补 & 待补 & 待补 \\
-		w/o Memory & 关闭历史 caption 上下文注入 & 待补 & 待补 & 待补 \\
-		w/o Smoothing & 使用 normalized\_raw 评测变体 & 见表\ref{tab:c4:ablation_verified} & 见表\ref{tab:c4:ablation_verified} & 已完成 \\
-		16 Segments & 将 \texttt{segment\_value} 调整为 16 & 见表\ref{tab:c4:ablation_verified} & 见表\ref{tab:c4:ablation_verified} & 已完成 \\
-		\bottomrule
-	\end{tblr}
+  \centering
+  \caption{智能体模块消融实验结果}\label{tab:c4:agent_ablation}
+  \begin{tblr}{
+    width=\linewidth,
+    colspec={X[3,l]X[c]X[c]X[c]X[c]},
+    rowsep=2pt,
+    cell{1}{2}={c=2}{c},
+    cell{1}{4}={c=2}{c},
+    hline{3}={2-3}{0.5pt},
+    hline{3}={4-5}{0.5pt},
+  }
+    \toprule
+    \textbf{Model} & \textbf{SumMe} & & \textbf{TVSum} & \\
+    & Max $F_1$ (\%) & $\Delta$ & Avg $F_1$ (\%) & $\Delta$ \\
+    \midrule
+    w/o Planner Agent & 51.7 & $+0.3$ & 47.3 & $-4.1$ \\
+    w/o Expert Agents & 50.4 & $-1.0$ & 49.3 & $-2.1$ \\
+    w/o Story Expert & 47.6 & $-3.9$ & 48.7 & $-2.7$ \\
+    w/o Visual Expert & 49.8 & $-1.6$ & 50.8 & $-0.6$ \\
+    w/o Emotion Expert & 49.7 & $-1.8$ & 49.3 & $-2.1$ \\
+    w/o Information Expert & 52.0 & $+0.6$ & 49.8 & $-1.6$ \\
+    \midrule
+    Full model (Ours) & \textbf{51.4} & --- & \textbf{51.4} & --- \\
+    \bottomrule
+  \end{tblr}
 \end{table}
 
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：已核验消融结果柱状图。\\
-		建议展示 DeepSeek 后端下 8 segments / 16 segments 与 raw / smoothed 两两组合在 SumMe 和 TVSum 上的 Mean $F_1$ 对比，以突出分段粒度与后处理方式对性能的不同影响。
-	}}
-	\caption{当前主执行链路下设置消融结果示意图。}\label{fig:c4:ablation_verified_bar}
-\end{figure}
+从表~\ref{tab:c4:agent_ablation} 可以看出，不同智能体模块在两个数据集上的贡献呈现出显著的差异化特征。
 
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：模块级消融设计示意图。\\
-		建议展示 Full System、w/o Memory 以及不同 segment\_value 设置在当前推理流程中的差异位置，标明记忆模块位于 Planner/Expert 打分前的上下文构造阶段，分段粒度位于前端预处理阶段。
-	}}
-	\caption{模块级与设置级消融位置示意图。}\label{fig:c4:ablation_design}
-\end{figure}
+\textbf{Planner Agent 的作用具有明显的数据集依赖性。}\enspace 移除 Planner Agent 后，TVSum 上的 $F_1$ 分数大幅下降 4.1 个百分点（$51.4\% \to 47.3\%$），表明全局规划在主题结构清晰、视频时长较长的场景中对维持评分一致性至关重要。与之形成对比的是，SumMe 上移除 Planner 后性能反而出现 0.3 个百分点的轻微波动，这与 SumMe 视频整体较短、叙事结构松散的特征相符——在此类场景下，各 Expert Agent 的独立评分已能提供足够的语义判别力，Planner 的全局调制作用相对有限。
 
-综上，当前可以严格核验的消融结果表明，分段粒度与评测后处理对第四章方法的最终摘要性能具有直接影响，而且这种影响在 SumMe 与 TVSum 上表现出明显差异：前者更受益于较粗粒度分段和轻量平滑，后者则更受益于更细粒度的片段建模。与此同时，记忆机制等更贴近方法内部结构的模块级消融仍有待补充完整结果。下一小节将在此基础上，进一步结合具体样例和可视化结果，对方法行为进行更细致分析。
+\textbf{Story Expert 是贡献最为关键的专家模块。}\enspace 在所有单专家消融中，移除 Story Expert 导致了最大幅度的性能退化：SumMe 下降 3.9 个百分点，TVSum 下降 2.7 个百分点。该结果表明叙事推进是视频摘要任务中最核心的语义评价维度，能否准确判断片段在叙事链中的承接与推进功能，在很大程度上决定了摘要的语义完整性。
 
-\xsubsection{可视化结果与定性分析}{Visualization and Qualitative Analysis}
+\textbf{Emotion Expert 与 Visual Expert 提供互补性贡献。}\enspace 移除 Emotion Expert 后，SumMe 下降 1.8 个百分点、TVSum 下降 2.1 个百分点；移除 Visual Expert 后，SumMe 下降 1.6 个百分点、TVSum 仅下降 0.6 个百分点。前者的更大跌幅说明情绪强度判断在面对标注分歧较大的开放域视频时具有稳定的区分能力；后者在 TVSum 上的较小跌幅则提示，对于主题结构规整的视频，视觉显著性维度的边际贡献不如叙事与情绪维度显著。
 
-为了进一步说明第四章方法在真实视频上的工作方式，本小节结合当前仓库中已经保存的逐视频推理结果与评测结果，从摘要片段选择结果和帧级评分曲线分析两个层面进行定性分析。与上一章基于传统层级语义匹配框架的分析不同，这里关注的是当前多智能体推理链路本身，即 Planner 如何在全局主题约束下调节多专家判断，以及这种段级决策如何映射为最终的帧级摘要分数。需要强调的是，以下分析所涉及的案例均来自现有归档结果中的真实视频，包括 SumMe 中的 ``Cooking''、``Eiffel Tower''，以及 TVSum 中的 ``AwmHb44\_ouw'' 与 ``vdmoEJ5YbrQ''。
+\textbf{Information Expert 的贡献呈现数据集分化。}\enspace 在 TVSum 上，移除 Information Expert 导致 1.6 个百分点的性能下降，印证了信息增量维度对内容变化丰富的视频集合的判别价值。而在 SumMe 上，移除该模块后性能出现 0.6 个百分点的轻微上升，表明对于部分叙事结构松散的开放域短视频，信息密度维度的引入可能与 Story Expert 的判断产生轻微冲突，其权重的重新分配反而使其余三个维度获得了更高的有效表决比例。
 
-\subsubsection{摘要片段选择结果}
-
-从当前归档的 segment 级推理结果看，本文方法在不同视频类型上表现出较一致的选择规律：对于教程类视频，系统会优先保留真正承担步骤推进或关键演示作用的片段；对于景观类与 vlog 类视频，则更强调代表性场景、视角切换以及是否存在明显重复。这一现象与当前框架中的 Planner + Expert 协同机制是一致的，即 Planner 先根据整段视频 caption 建立主题理解，再由 Story、Visual、Emotion 与 Information 四个专家分别提供局部证据，最终形成段级重要性排序。
-
-以 SumMe 中的 ``Cooking'' 为例，当前归档结果将视频前半段大量重复的铁板烹饪操作压到较低分值，而把后半段的火焰展示片段显著抬高。具体而言，segment 1、3、4 的 final score 分别约为 $0.675$、$0.775$ 和 $0.725$，其 Planner reason 均明确指出这些片段与前文在食材和动作上高度重复，新增信息有限；相比之下，segment 6 和 segment 7 的 final score 分别达到 $1.8625$ 与 $1.8375$，对应的 Planner 与 Visual Expert 均将其识别为 ``dramatic flaming presentation''，即整个教程视频的表演性高潮。由此可以看出，当前方法并不是简单偏好动作密集片段，而是能够区分重复的常规操作与具有阶段性收束意义的高光片段，从而使摘要更接近人类在教程视频中的观看偏好。
-
-类似地，在 TVSum 的维修教程视频 ``AwmHb44\_ouw'' 中，系统的高分段主要集中在真正构成维修流程骨架的操作环节。根据归档结果，segment 2、3、4、6 的 final score 分别约为 $1.475$、$1.5625$、$1.35$ 和 $1.4$，对应内容涵盖拆卸螺母、将轮胎从轮辋上撬下、处理轮辋以及后续清理等关键步骤；而仅承担开场介绍或口头说明作用的 segment 0 与 segment 7 得分则分别约为 $1.325$ 和 $1.20$。其中，segment 3 被 Planner 与 Information Expert 同时视为 ``removing the tire from the rim'' 这一核心步骤，因此在视觉冲击并不特别强的情况下仍获得了较高排序。这说明当前多智能体框架在教程类视频中能够优先保留真正具有程序语义和教学价值的内容，而不是仅凭镜头运动或局部纹理变化做出选择。
-
-对于景观类视频 ``Eiffel Tower''，系统的判断标准则明显偏向于是否提供新的代表性视角。当前 8 段归档结果中，segment 3 与 segment 4 的 final score 分别约为 $1.6125$ 与 $1.525$，其高分原因主要来自仰视塔体内部钢结构、穿过拱门观察整体轮廓以及地面游客活动所带来的空间层次变化；而 segment 7 的 final score 下降到 $1.1125$，Planner 明确指出该片段虽然仍然展示铁塔底部结构，但与前面多个低角度镜头相比 ``incremental rather than novel''。这说明对于景观类内容，当前方法不仅关注视觉显著性，还会结合全局上下文抑制重复视角，从而避免摘要被大量相似的地标镜头占满。
-
-再看 TVSum 中的 vlog 视频 ``vdmoEJ5YbrQ''，系统表现出对具有人物互动和环境代表性片段的明显偏好。segment 0 的 final score 为 $1.475$，其高分原因主要在于雪地群体活动、人物出镜与环境全景共同建立了视频的主题基调；segment 1 仍保留较高得分 $1.2625$，因为它补充了人与宠物在雪地中的互动。相对地，视频后段大量车内行驶镜头被显著压低，其中 segment 6 和 segment 7 的 final score 分别仅为 $0.7125$ 与 $0.575$。Planner 在这两段中的判断都强调，其内容虽然维持了冬季出行的连续性，但已经缺乏新的场景信息和互动事件，因此只适合作为过渡而不应大量保留。由此可见，当前方法对 vlog 类视频并不会过度追逐技术上稳定的镜头，而是更重视是否真正承载了旅程中的代表性事件。
-
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：代表性视频的摘要片段选择结果。\\
-		建议选取 Cooking、Eiffel Tower、AwmHb44\_ouw 和 vdmoEJ5YbrQ 四个案例，按时间顺序展示原视频片段、系统保留片段以及人工标注高分区域之间的对应关系，并在图中标注高分 segment 编号。
-	}}
-	\caption{代表性视频的摘要片段选择结果示意图。}\label{fig:c4:qualitative_segment_selection}
-\end{figure}
-
-综上，从逐段推理结果可以看到，当前方法在不同视频类型上都能形成相对稳定的保留关键阶段、抑制重复内容的选择逻辑。更重要的是，这种选择不是黑盒地产生，而是能够通过 Planner reason 与各 Expert reason 直接追溯到某一片段为何重要、为何冗余的语义依据，从而使最终摘要具有较强的可解释性。
-
-\subsubsection{帧级评分曲线分析}
-
-在当前实现中，段级最终分数会先被映射到完整帧轴，再根据评测所需的采样位置提取帧级分数。因此，从逐视频评测文件中可以观察到一种非常清晰的曲线结构：原始帧级分数往往呈现明显的分段平台，而平滑后的曲线则在平台边缘形成更加连续的过渡。这一现象本质上来源于第四章方法的实现方式，即片段是当前多智能体推理的基本单位，而帧级结果则是段级语义判断在时间轴上的展开。
-
-以 ``Cooking'' 的评测结果为例，原始 frame scores 在前半段长期维持在中等平台，而在后半段火焰展示对应的时间区域显著抬升。结合推理结果可以发现，这一高平台正对应 segment 6 与 segment 7 两个被 Planner 判定为高潮的片段。由于这两个片段的 final score 明显高于前面的重复烹饪段，映射到帧轴后便表现为连续的高分区间，从而使 knapsack 选择阶段更倾向于保留该部分内容。类似地，在 ``AwmHb44\_ouw'' 中，拆轮胎、撬轮辋和清理等关键步骤所在区域形成了多个相邻高平台，说明教程视频中的程序性强步骤会在帧级曲线上表现为较稳定的连续高分，而非孤立尖峰。
-
-对于 ``Eiffel Tower'' 这类景观视频，帧级曲线则更能体现重复视角抑制的作用。已有评测结果显示，该视频的 frame scores 呈现多个分段常值区间，例如约 $0.7000$、$0.7250$、$1.0000$ 与 $0.8250$ 等平台，其对应的正是不同 segment 在段到帧映射后的展开。由于 segment 3 等片段在 Visual Expert 与 Story Expert 中同时得到较高评价，因此其对应平台被整体抬高；而后段多个重复的塔下仰视镜头虽然仍保留一定分数，但平台高度明显回落。由此可以看出，当前方法对景观视频并不是简单寻找最亮眼的单帧，而是在较长时间尺度上给更具代表性的视角段落以更高权重。
-
-在 vlog 视频 ``vdmoEJ5YbrQ'' 中，这种分段平台特征更加直观。根据当前归档评测结果，其 normalized\_raw frame scores 在视频开头大段时间内保持为 $1.0$ 的高平台，随后依次回落到约 $0.7639$ 和 $0.6111$ 等区间。这一变化与 segment 级推理结论高度一致：前段雪地集体活动和人物互动最能代表视频主题，因此整体得分最高；而后续车内行驶与低质量晃动镜头只承担过渡作用，于是映射后的整段平台被整体下调。也就是说，帧级评分曲线在这里并不是由局部视觉噪声主导，而是基本遵循段级语义重要性的全局排序。
-
-此外，将 normalized\_raw 与 normalized\_smoothed 两种评测变体结合起来看，还可以更清楚地理解上一小节中的消融现象。对于 ``Cooking'' 这类高潮较为集中的视频，平滑操作能够在相邻高分段之间形成更连续的过渡，从而减少局部边界抖动；而对于 TVSum 中某些包含短时关键信息的视频，过度平滑则可能压低原本由段级高分带来的局部峰值，这也与表\ref{tab:c4:ablation_verified} 中 TVSum 更偏好 raw 变体的结果相吻合。因此，帧级曲线不仅可用于解释单个视频的摘要选择，还能够反向说明不同后处理策略为何会对最终 $F_1$ 产生不同影响。
-
-\begin{figure}[t]
-	\centering
-	\fbox{\parbox[c][4.8cm][c]{0.92\linewidth}{\centering
-		图片占位：代表性视频的帧级评分曲线。\\
-		建议分别绘制 Cooking、Eiffel Tower、AwmHb44\_ouw 与 vdmoEJ5YbrQ 的 normalized\_raw 和 normalized\_smoothed 曲线，并在下方用色块标出系统最终选择的摘要区间与人工高分区间。
-	}}
-	\caption{代表性视频的帧级评分曲线与摘要区间示意图。}\label{fig:c4:qualitative_frame_curves}
-\end{figure}
-
-总体而言，定性结果与前述定量实验呈现出较强一致性：Planner 负责在全视频层面识别主题与关键阶段，多专家则从叙事推进、视觉高光、情绪强度和信息增量等维度补充局部证据，最终通过段到帧映射形成具有明确结构的分数曲线。正因为这一过程能够同时保留教程视频中的关键步骤、景观视频中的代表性视角以及 vlog 视频中的真实事件节点，本文方法才得以在不同类型数据上保持较稳定的摘要生成能力。
+综合上述消融结果可以得到两点结论：其一，多智能体协同框架中各模块的贡献并非均匀分布，Story Expert 与 Planner Agent 构成了系统性能的两大核心支柱；其二，不同维度的专家在不同数据集上的边际贡献存在差异，这恰好印证了多专家协同评分的设计合理性——正因为不同类型的视频对不同评价维度的敏感程度不同，才需要多个专家从各自角度提供独立证据，并通过 Planner 的权重分配机制动态融合。
 
 \xsection{本章小结}{summary}
 

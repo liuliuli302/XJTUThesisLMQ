@@ -249,33 +249,6 @@ KTS 的处理流程如图~\ref{fig:kts}所示，可概括为特征提取、核�
 
 上述两个数据集在视频来源、内容多样性、标注粒度与主题结构等方面形成互补：SumMe 侧重考察模型在标注高度分散、叙事结构不规则的开放域场景中的鲁棒性，TVSum 则侧重检验模型在主题结构相对明确、帧级评价更为精细的条件下对内容重要性排序的准确性。二者的联合使用能够从不同维度对方法的泛化性与适应性进行全面评估。
 
-\xsubsection{评估指标}{eval}
-本文采用视频摘要领域最为通用的 $F_1$-Score 作为核心定量评估指标，用以衡量模型生成摘要与人工标注摘要之间的一致性。
-
-视频摘要任务的最终输出为一个与原视频等长的二值向量，其中值为 1 的位置表示对应帧被选入摘要，值为 0 则表示被排除。设模型生成的二值摘要向量为 $\mathbf{S}_{\mathrm{sys}}$，某一标注者给出的参考摘要向量为 $\mathbf{S}_{\mathrm{gt}}$，二者的元素取值均属于 $\{0,1\}$。在此基础上，精确率（Precision）与召回率（Recall）分别定义为
-\begin{equation}
-  P = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{sys}}|}, \qquad
-  R = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{gt}}|},
-\end{equation}
-式中，$P$——精确率；$R$——召回率；$\mathbf{S}_{\mathrm{sys}}$——模型生成的二值摘要向量；$\mathbf{S}_{\mathrm{gt}}$——人工参考摘要向量；$|\cdot|$——集合的基数。
-其中 $|\cdot|$ 表示集合的基数，$\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}$ 为模型所选帧与标注所选帧的交集。精确率 $P$ 反映模型所选帧中实际属于参考摘要的比例，召回率 $R$ 则反映参考摘要中被模型成功召回的比例。二者的调和平均即为 $F_1$ 分数：
-\begin{equation}
-  F_{1}= \frac{2PR}{P + R}.
-\end{equation}
-式中，$F_1$——精确率与召回率的调和平均指标；$P$——精确率；$R$——召回率。
-
-由于两个数据集均包含多位标注者的独立标注，单一参考摘要无法完整反映视频摘要任务固有的主观性。针对不同数据集的标注特点，领域内分别采用两种评估协议。对于 SumMe 数据集，将模型摘要与每位标注者的参考摘要逐一计算 $F_1$ 分数后取最大值，该协议称为 Max $F_1$-Score：
-\begin{equation}
-  F_1^{\max}(v) = \max_{u \in \mathcal{U}_v} F_1(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \mathbf{S}_{\mathrm{gt}}^{(v,u)}),
-\end{equation}
-式中，$F_1^{\max}(v)$——视频 $v$ 在 SumMe 协议下的最大 $F_1$ 分数；$\mathcal{U}_v$——视频 $v$ 的标注者集合；$\mathbf{S}_{\mathrm{sys}}^{(v)}$——视频 $v$ 的模型摘要；$\mathbf{S}_{\mathrm{gt}}^{(v,u)}$——标注者 $u$ 给出的参考摘要。
-其中 $\mathcal{U}_v$ 为视频 $v$ 的标注者集合，$\mathbf{S}_{\mathrm{gt}}^{(v,u)}$ 为标注者 $u$ 给出的参考摘要。对于 TVSum 数据集，先将多位标注者的逐帧重要性评分取均值并二值化为参考摘要，再与模型输出计算 $F_1$ 分数，该协议称为 Avg $F_1$-Score：
-\begin{equation}
-  F_1^{\mathrm{avg}}(v) = F_1\!\big(\mathbf{S}_{\mathrm{sys}}^{(v)},\, \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)}\big), \qquad \bar{\mathbf{S}}_{\mathrm{gt}}^{(v)} = \mathrm{Binarize}\!\Big(\frac{1}{|\mathcal{U}_v|}\sum_{u \in \mathcal{U}_v}\mathbf{r}^{(v,u)}\Big)
-\end{equation}
-式中，$F_1^{\mathrm{avg}}(v)$——视频 $v$ 在 TVSum 协议下的平均 $F_1$ 分数；$\bar{\mathbf{S}}_{\mathrm{gt}}^{(v)}$——由多位标注者评分聚合得到的参考摘要；$\mathbf{r}^{(v,u)}$——标注者 $u$ 给出的帧级重要性评分向量；$\mathrm{Binarize}(\cdot)$——二值化操作。
-其中 $\mathbf{r}^{(v,u)}$ 为标注者 $u$ 给出的帧级重要性评分向量，$\mathrm{Binarize}(\cdot)$ 为按阈值二值化操作。最终，在各数据集上对所有视频的对应 $F_1$ 指标取均值即得总体评估分数。本文严格遵循上述协议——SumMe 报告 Max $F_1$-Score，TVSum 报告 Avg $F_1$-Score——以确保与现有方法具有公平可比性。
-
 \xsubsection{实验细节}{exp}
 \subsubsection{预处理与镜头分割}
 本文采用 KTS（Kernel Temporal Segmentation）算法对视频进行镜头划分，并将得到的连续片段统一作为后续语义建模的场景单元。为控制计算开销，首先对原始视频进行时间下采样，实验中默认以每秒 2 帧的频率提取候选帧；随后使用 GoogLeNet 提取帧级视觉特征，并据此构建 KTS 所需的时序核矩阵。正则化参数 $\lambda$ 随视频时长自适应调整，以保证划分结果既能保留关键语义边界，又不过度切碎视频结构。实际统计中，所得场景平均时长控制在 3--5 秒之间，能够较好兼顾语义完整性与后续推理成本。
