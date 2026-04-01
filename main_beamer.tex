@@ -53,6 +53,7 @@
 \usepackage{graphicx}
 \graphicspath{{Figures/}}
 \usepackage{tabularray}
+\UseTblrLibrary{booktabs}
 \usepackage{caption}
 \usepackage[labelformat=simple]{subcaption}
 \usepackage{tikz}
@@ -146,28 +147,28 @@
 %% 填写以下信息用以自动生成
 
 \title[% 页脚标题[非首页]
-  页脚标题
+  基于层级语义建模与多智能体协同推理的免训练视频摘要方法
 ]{% 主标题[首页]
-  \textbf{主标题}
+  \textbf{基于层级语义建模与多智能体\\协同推理的免训练视频摘要方法}
 }
 
 \subtitle{% 子标题[首页]
-  Subtitles
+  Training-free Video Summarization via Hierarchical Semantic Modeling \\and Multi-agent Collaborative Reasoning
 }
 
 \subject{% 主题信息[PDF文档]
-  主题1, 主题2, 主题3, 主题4
+  视频摘要, 大语言模型, 免训练, 多智能体
 }
 
-\author{作者A}
+\author{刘明圻}
 
 \institute[% 单位简称[非首页]
-  学院简称
+  西安交通大学
 ]{% 单位名称[非首页]
-  学院名称
+  计算机科学与技术学院
 }
 
-\date{\the\year 年 \the\month 月 \the\day 日}
+\date{2026 年 4 月}
 
 
 
@@ -214,24 +215,12 @@
 
 
 %% 正文 %%
-\section{第一节}
-\subsection{第一小节}
-
-\begin{frame}{第一页}
-  \begin{enumerate}
-    \item 点1
-    \item 点2
-    \item 点3
-  \end{enumerate}
-\end{frame}
-
-%% 也可以使用 \include
-% \include{Main_Beamer/c1.tex}
+\include{Main_Beamer/c1.tex}
 
 
 %% 参考文献 %%
-% \begin{frame}{参考文献}
-  % \printbibliography[heading=none]
+% \begin{frame}[allowframebreaks]{参考文献}
+%   \printbibliography[heading=none]
 % \end{frame}
 
 

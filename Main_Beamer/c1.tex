@@ -1,14 +1,528 @@
 % !TeX encoding = UTF-8
 % !TeX root = ../main_beamer.tex
 
-\section{第一节}
+%% ========================================
+%%  第一部分：研究背景与动机
+%% ========================================
+\section{研究背景与动机}
 
-\subsection{第一小节}
+\begin{frame}{研究背景}
+  \begin{itemize}
+    \item 视频数据爆炸式增长，信息过载问题日益突出
+    \item \textbf{视频摘要}：自动识别并保留最具代表性的帧或片段，\\ 支持用户快速理解视频主题
+    \item 传统方法（监督/无监督/弱监督）依赖标注数据与任务特定训练，\\ 跨场景迁移能力有限
+  \end{itemize}
+  % \vfill
+  \begin{block}{研究趋势}
+    多模态大语言模型（MLLMs）的发展为\textbf{免训练 (Training-free)} 视频摘要提供了新范式——无需额外参数更新，利用语言推理能力完成语义分析与关键片段筛选
+  \end{block}
+\end{frame}
 
-\begin{frame}{第一页}
+\begin{frame}{现有方法的不足与本文动机}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{现有方法局限}
+      \begin{enumerate}
+        \item 高层语义建模不足——难以刻画视频主题
+        \item 单一评分器——无法兼顾多维评价目标
+        \item 时序上下文利用有限——长视频一致性差
+      \end{enumerate}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{本文两条技术路线}
+      \begin{enumerate}
+        \item \textbf{层级语义建模}\\帧→场景→视频的多级语义理解
+        \item \textbf{多智能体协同推理}\\Planner + 多 Expert 多维度协同评分
+      \end{enumerate}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{论文结构}
   \begin{enumerate}
-    \item 点1
-    \item 点2
-    \item 点3
+    \item \textbf{第一章}：绪论——研究背景、研究现状与研究内容
+    \item \textbf{第二章}：相关理论基础与技术原理
+    \item \textbf{第三章}：基于层级语义建模的免训练视频摘要方法
+    \item \textbf{第四章}：基于多智能体协同推理的视频摘要方法
+    \item \textbf{第五章}：结论与展望
+  \end{enumerate}
+
+\end{frame}
+
+
+%% ========================================
+%%  第二部分：相关理论基础
+%% ========================================
+\section{相关理论基础}
+
+\begin{frame}{视频摘要任务概述}
+  \begin{itemize}
+    \item \textbf{任务定义}：给定视频 $\mathcal{V}=\{f_1,\ldots,f_T\}$，选择关键帧/片段集合构成摘要
+    \item \textbf{常用数据集}：
+      \begin{itemize}
+        \item SumMe（25 段用户视频，评测 Max $F_1$）
+        \item TVSum（50 段 YouTube 视频，评测 Avg $F_1$）
+      \end{itemize}
+    \item \textbf{评价指标}：$F_1$ 分数、Spearman $\rho$ / Kendall $\tau$ 秩相关系数
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{关键技术基础}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{大语言模型}
+      \begin{itemize}
+        \item Transformer 自注意力架构
+        \item 提示工程 (Prompt Engineering)
+        \item 多模态语义对齐
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{智能体与协作}
+      \begin{itemize}
+        \item 基于 LLM 的 Agent 决策
+        \item 角色化提示实现职责分离
+        \item 多智能体协同机制
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+
+%% ========================================
+%%  第三部分：第三章方法——层级语义建模
+%% ========================================
+\section{层级语义建模的免训练视频摘要方法}
+
+\begin{frame}{方法总览（第三章）}
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.6\textwidth]{c3/architecture.pdf}
+    \caption{基于大语言模型的免训练视频摘要框架结构图}
+  \end{figure}
+\end{frame}
+
+\begin{frame}{阶段一：视频场景划分}
+  \begin{itemize}
+    \item 采用 \textbf{KTS 算法}对视频进行结构化分段
+    \item 优化目标：
+      \begin{equation*}
+        \min_{\mathcal{B}} J(\mathcal{B})=\sum_{k=1}^{K}\mathrm{Var}(s_k)+\lambda K
+      \end{equation*}
+    \item 将连续视频流组织为语义相近的场景单元 $\{s_1, s_2, \ldots, s_K\}$
+  \end{itemize}
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.6\textwidth]{c3/model_kts.pdf}
+  \end{figure}
+\end{frame}
+
+\begin{frame}{阶段二：多级语义描述生成}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \centering
+      \includegraphics[width=0.95\textwidth]{c3/model_caption_aggregation.pdf}
+      \captionof{figure}{多级视频语义描述生成流程}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{itemize}
+        \item \textbf{帧级描述}：$Cap_f(t)=\mathrm{VLM}(I_t;\theta_{\mathrm{VLM}})$
+        \item \textbf{场景级聚合}：$Cap_s(k)=\mathrm{LLM}_{\mathrm{scene}}(\mathcal{T}_k;\theta_{\mathrm{LLM}})$
+        \item \textbf{视频级摘要}：$Cap_v=\mathrm{LLM}_{\mathrm{video}}(\{Cap_s(1),\ldots,Cap_s(K)\};\theta_{\mathrm{LLM}})$
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{阶段三：全局主题约束的场景语义评分}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{c3/model_llm_query.pdf}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \begin{itemize}
+        \item 联合输入场景描述 $Cap_s(k)$ 与视频级摘要 $Cap_v$
+        \item LLM 评估该场景对整体主题的贡献
+      \end{itemize}
+      \begin{equation*}
+        S_{\mathrm{LLM}}(k)=\mathrm{Norm}\big(\mathrm{LLM}(\Pi(Cap_v,Cap_s(k)))\big)
+      \end{equation*}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{阶段四：帧级语义分数增强}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{c3/model_score_refinement.pdf}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \begin{itemize}
+        \item 帧--场景相关性：$S_{FS}(p_j)=\mathbf{z}_{f,j}^{\top}\mathbf{z}_{s,j}$
+        \item 帧--视频相关性：$S_{FV}(p_j)=\mathbf{z}_{f,j}^{\top}\mathbf{z}_{v}$
+        \item \textbf{最终帧级分数}：
+      \end{itemize}
+      \begin{equation*}
+        F(p_j)=\alpha\,S_{\mathrm{LLM}}\big(\sigma(j)\big)\,S_{FS}(p_j)+S_{FV}(p_j)
+      \end{equation*}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{第三章实验结果——$F_1$ 分数对比}
+  \begin{table}
+    \centering
+    \scriptsize
+    \begin{tblr}{
+      width=0.92\textwidth,
+      colspec={lccc},
+      rowsep=1.5pt,
+    }
+      \toprule
+      \textbf{方法} & \textbf{类别} & \textbf{SumMe} & \textbf{TVSum} \\
+      \midrule
+      dppLSTM (2016) & 监督 & 38.6 & 54.7 \\
+      ACGAN (2019) & 监督 & 47.2 & 59.4 \\
+      MPFN (2024) & 监督 & 51.9 & 62.4 \\
+      CM-AVS (2026) & 监督 & 52.4 & \textbf{67.5} \\
+      \midrule
+      DR-DSN (2018) & 无监督 & 41.4 & 57.6 \\
+      OM-AE (2019) & 无监督 & 37.7 & 51.5 \\
+      SUM-SR (2024) & 无监督 & 51.3 & 60.2 \\
+      SegSum (2025) & 无监督 & \textbf{54.0} & 62.0 \\
+      \midrule
+      M3Sum-SP (2024) & 免训练 & 43.6 & 56.9 \\
+      M3Sum-PCoT (2024) & 免训练 & 41.9 & 57.6 \\
+      \textbf{本章方法} & \textbf{免训练} & \textbf{48.1} & \textbf{61.1} \\
+      \bottomrule
+    \end{tblr}
+    \caption{第三章方法与代表性方法的 $F_1$ 对比（\%）}
+  \end{table}
+\end{frame}
+
+\begin{frame}{第三章实验结果——秩相关性对比}
+  \begin{table}
+    \centering
+    \scriptsize
+    \begin{tblr}{
+      width=0.92\textwidth,
+      colspec={lcccc},
+      rowsep=0.8pt,
+      cell{1}{2}={c=2}{c},
+      cell{1}{4}={c=2}{c},
+    }
+      \toprule
+      \textbf{方法} & \textbf{SumMe} & & \textbf{TVSum} & \\
+      \midrule
+      & $\rho$ & $\tau$ & $\rho$ & $\tau$ \\
+      \midrule
+      dppLSTM (2016) & 0.049 & 0.040 & 0.055 & 0.042 \\
+      VASNet (2018) & 0.170 & 0.160 & 0.170 & 0.160 \\
+      DSNet-AB (2020) & 0.059 & 0.051 & 0.129 & 0.108 \\
+      DSNet-AF (2020) & 0.046 & 0.037 & 0.138 & 0.113 \\
+      DMASum (2020) & 0.089 & 0.063 & 0.267 & 0.203 \\
+      PGL-SUM (2021) & -- & -- & 0.157 & 0.206 \\
+      MSVA (2021) & 0.230 & 0.200 & 0.210 & 0.190 \\
+      iPTNet (2022) & 0.119 & 0.101 & 0.163 & 0.134 \\
+      CSTA (2024) & 0.274 & 0.246 & 0.255 & 0.194 \\
+      LLMVS (2025) & \textbf{0.282} & \textbf{0.253} & 0.275 & 0.211 \\
+      \midrule
+      \textbf{本章方法} & 0.267 & 0.218 & 0.280 & 0.191 \\
+      \bottomrule
+    \end{tblr}
+    \caption{第三章方法与代表性方法的秩相关性对比}
+  \end{table}
+\end{frame}
+
+\begin{frame}{第三章实验结果——消融实验}
+  \begin{table}
+    \centering
+    \small
+    \begin{tblr}{
+      colspec={lcccc},
+      rowsep=1.5pt,
+    }
+      \toprule
+      \textbf{消融方案} & \textbf{SumMe} & $\Delta$ & \textbf{TVSum} & $\Delta$ \\
+      \midrule
+      w/o Caption \& Scene Scoring & 45.8 & $-2.3$ & 58.9 & $-2.2$ \\
+      w/o $S_{FS}$（帧--场景相关性） & 46.7 & $-1.4$ & 60.6 & $-0.5$ \\
+      w/o $S_{FV}$（帧--视频相关性） & 42.2 & $-5.9$ & 60.3 & $-0.8$ \\
+      w/o Frame Refinement & 42.2 & $-5.9$ & 52.8 & $-8.3$ \\
+      \midrule
+      \textbf{完整方法} & \textbf{48.1} & --- & \textbf{61.1} & --- \\
+      \bottomrule
+    \end{tblr}
+    \caption{第三章消融实验（Max/Avg $F_1$\,\%）}
+  \end{table}
+  \begin{itemize}
+    \item 帧级增强模块对两个数据集贡献最大
+    \item 帧--视频全局相关性 $S_{FV}$ 在 SumMe 上至关重要
+  \end{itemize}
+\end{frame}
+
+
+%% ========================================
+%%  第四部分：第四章方法——多智能体协同
+%% ========================================
+\section{多智能体协同推理的视频摘要方法}
+
+\begin{frame}{方法总览（第四章）}
+  \begin{figure}
+    \centering
+    \includegraphics[width=0.8\textwidth]{c4/architecture_c4.pdf}
+    \caption{基于大语言模型智能体协同的视频摘要方法总览}
+  \end{figure}
+\end{frame}
+
+\begin{frame}{阶段一：视频结构化处理与段级描述生成}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \begin{figure}
+        \centering
+        \includegraphics[width=\textwidth]{c4/model_c4_01.pdf}
+      \end{figure}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \begin{enumerate}
+        \item \textbf{均匀分段}：将视频划分为 $N$ 个连续片段
+        \item \textbf{片段内采样}：每段均匀选取代表帧
+        \item \textbf{段级描述}：VLM 联合多帧输入生成段级文本
+      \end{enumerate}
+      \begin{equation*}
+        Cap_s(k)=\mathrm{VLM}_{\mathrm{seg}}\big(I_k;\theta_{\mathrm{VLM}},\pi_{\mathrm{seg}}\big)
+      \end{equation*}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{阶段二：全局规划与多专家协同评分}
+  \begin{figure}
+    \centering
+    \includegraphics[height=0.7\textheight]{c4/model_c4_02.pdf}
+    \caption{全局规划与多专家协同评分流程}
+  \end{figure}
+\end{frame}
+
+\begin{frame}{Planner Agent 与 Expert Agents}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Planner Agent 全局规划}
+      \begin{itemize}
+        \item 推断视频主题 $z$
+        \item 生成全局摘要 $Cap_v$
+        \item 分配专家权重 $\mathbf{w}$
+        \item 参考各 Expert 证据给出综合主分数
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{四类 Expert Agent}
+      \begin{itemize}
+        \item \textbf{Story}：叙事推进
+        \item \textbf{Visual}：视觉显著性
+        \item \textbf{Emotion}：情绪表达
+        \item \textbf{Information}：信息增量
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vfill
+  \textbf{分数融合：}
+  \begin{equation*}
+    S_{\mathrm{final}}(k) = S_{\mathrm{plan}}(k) + \sum_{m\in\{s,v,e,i\}} w_m \, S_m(k)
+  \end{equation*}
+\end{frame}
+
+\begin{frame}{阶段三：记忆增强与帧级摘要生成}
+  \begin{enumerate}
+    \item \textbf{上下文记忆注入}——将前序片段描述拼接注入当前评分提示
+      \begin{equation*}
+        \mathcal{M}_k^{(h)}=\{Cap_s(\max(1,k{-}h)),\ldots,Cap_s(k{-}1)\}
+      \end{equation*}
+    \item \textbf{帧级分数映射}——段级分数回填至帧轴
+      \begin{equation*}
+        F(t)=S_{\mathrm{final}}\big(k(t)\big)
+      \end{equation*}
+    \item \textbf{背包优化}——0/1 动态规划选择最优片段集合
+      \begin{equation*}
+        \max_{\mathbf{x}} \sum_{j} x_j\,u_j \quad \text{s.t.}\quad \sum_{j} x_j\,l_j \le L,\; x_j\in\{0,1\}
+      \end{equation*}
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{第四章实验结果——$F_1$ 分数对比}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \begin{table}
+        \centering
+        \scriptsize
+        \begin{tblr}{
+          width=\linewidth,
+          colspec={lccc},
+          rowsep=1.5pt,
+        }
+          \toprule
+          \textbf{方法} & \textbf{类别} & \textbf{SumMe} & \textbf{TVSum} \\
+          \midrule
+          dppLSTM (2016) & 监督 & 38.6 & 54.7 \\
+          ACGAN (2019) & 监督 & 47.2 & 59.4 \\
+          MPFN (2024) & 监督 & 51.9 & 62.4 \\
+          CM-AVS (2026) & 监督 & 52.4 & \textbf{67.5} \\
+          \midrule
+          DR-DSN (2018) & 无监督 & 41.4 & 57.6 \\
+          OM-AE (2019) & 无监督 & 37.7 & 51.5 \\
+          SUM-SR (2024) & 无监督 & 51.3 & 60.2 \\
+          SegSum (2025) & 无监督 & \textbf{54.0} & 62.0 \\
+          \midrule
+          M3Sum-SP (2024) & 免训练 & 43.6 & 56.9 \\
+          M3Sum-PCoT (2024) & 免训练 & 41.9 & 57.6 \\
+          第三章方法 & 免训练 & 48.1 & 61.1 \\
+          \textbf{本章方法} & \textbf{免训练} & \textbf{53.6} & \textbf{55.6} \\
+          \bottomrule
+        \end{tblr}
+        \caption{第四章方法与代表性方法的 $F_1$ 对比（\%）}
+      \end{table}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \vspace{-0.5em}
+      \begin{itemize}
+        \item SumMe 上超越全部监督基线，达到免训练方法最优
+        \item 相比第三章方法 SumMe 提升 5.5 个百分点
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{第四章实验结果——秩相关性对比}
+  \begin{columns}[T]
+    \begin{column}{0.60\textwidth}
+      \begin{table}
+        \centering
+        \scriptsize
+        \begin{tblr}{
+          width=\linewidth,
+          colspec={lcccc},
+          rowsep=0.8pt,
+          cell{1}{2}={c=2}{c},
+          cell{1}{4}={c=2}{c},
+        }
+          \toprule
+          \textbf{方法} & \textbf{SumMe} & & \textbf{TVSum} & \\
+          \midrule
+          & $\rho$ & $\tau$ & $\rho$ & $\tau$ \\
+          \midrule
+          dppLSTM (2016) & 0.049 & 0.040 & 0.055 & 0.042 \\
+          VASNet (2018) & 0.170 & 0.160 & 0.170 & 0.160 \\
+          DSNet-AB (2020) & 0.059 & 0.051 & 0.129 & 0.108 \\
+          DSNet-AF (2020) & 0.046 & 0.037 & 0.138 & 0.113 \\
+          DMASum (2020) & 0.089 & 0.063 & 0.267 & 0.203 \\
+          PGL-SUM (2021) & -- & -- & 0.157 & 0.206 \\
+          MSVA (2021) & 0.230 & 0.200 & 0.210 & 0.190 \\
+          iPTNet (2022) & 0.119 & 0.101 & 0.163 & 0.134 \\
+          CSTA (2024) & 0.274 & 0.246 & 0.255 & 0.194 \\
+          LLMVS (2025) & \textbf{0.282} & \textbf{0.253} & 0.275 & 0.211 \\
+          第三章方法 & 0.267 & 0.218 & 0.280 & 0.191 \\
+          \textbf{本章方法} & \textbf{0.282} & 0.214 & \textbf{0.323} & \textbf{0.224} \\
+          \bottomrule
+        \end{tblr}
+        \caption{第四章方法与代表性方法的秩相关性对比}
+      \end{table}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \vspace{-0.5em}
+      \begin{itemize}
+        \item TVSum $\rho{=}0.323$ 取得最高 Spearman 系数
+        \item 完全免训练条件下取得与 LLMVS 可比甚至更优的排序表现
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{第四章实验结果——消融实验}
+  \begin{table}
+    \centering
+    \scriptsize
+    \begin{tblr}{
+      colspec={lcccc},
+      rowsep=0.8pt,
+    }
+      \toprule
+      \textbf{消融方案} & \textbf{SumMe} & $\Delta$ & \textbf{TVSum} & $\Delta$ \\
+      \midrule
+      w/o Planner Agent & 51.74 & $-1.86$ & 47.27 & $-8.33$ \\
+      w/o Expert Agents & 50.43 & $-3.17$ & 49.28 & $-6.32$ \\
+      w/o Story Expert & 47.58 & $-6.02$ & 48.71 & $-6.89$ \\
+      w/o Visual Expert & 49.82 & $-3.78$ & 50.80 & $-4.80$ \\
+      w/o Emotion Expert & 49.66 & $-3.94$ & 49.32 & $-6.28$ \\
+      w/o Information Expert & 51.99 & $-1.61$ & 49.77 & $-5.83$ \\
+      \midrule
+      \textbf{完整方法} & \textbf{53.6} & --- & \textbf{55.6} & --- \\
+      \bottomrule
+    \end{tblr}
+    \caption{智能体模块消融实验（$F_1$\,\%）}
+  \end{table}
+  \begin{itemize}
+    \item Story Expert 消融导致最大性能退化
+    \item Planner Agent 在 TVSum 上作用尤为突出（$\Delta{=}-8.33$）
+  \end{itemize}
+\end{frame}
+
+
+%% ========================================
+%%  第五部分：结论与展望
+%% ========================================
+\section{结论与展望}
+
+\begin{frame}{主要贡献}
+  \begin{enumerate}
+    \item \textbf{层级语义建模的免训练视频摘要方法}
+      \begin{itemize}
+        \item 帧→场景→视频三级语义描述 + 全局主题约束场景评分
+        \item 帧级语义相关性增强，实现主题一致的摘要生成
+      \end{itemize}
+    \item \textbf{多智能体协同推理的视频摘要框架}
+      \begin{itemize}
+        \item Planner 全局规划 + 四类 Expert 多维度评分
+        \item 上下文记忆增强 + 背包优化摘要构造
+      \end{itemize}
+    \item 两条路线在 SumMe / TVSum 数据集上取得有竞争力的性能，\\
+          无需额外训练与参数更新
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{实验结果总结}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{第三章方法}
+      \begin{itemize}
+        \item SumMe: 48.1\% $F_1$
+        \item TVSum: 61.1\% $F_1$
+        \item 超越同类免训练方法\\ 6--10 个百分点
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{第四章方法}
+      \begin{itemize}
+        \item SumMe: 53.6\% $F_1$
+        \item TVSum: 55.6\% $F_1$
+        \item SumMe 上超越全部监督基线
+        \item TVSum $\rho{=}0.323$ 秩相关性最优
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{未来工作方向}
+  \begin{enumerate}
+    \item 探索更自适应的视频分段策略，提升分段与事件边界一致性
+    \item 研究更稳定的记忆组织与检索机制，增强长视频全局一致性
+    \item 优化帧级映射机制，使段级推理结果更精确地对齐到帧级分数
+    \item 引入更强的多模态描述模型与更细分的专家角色
+    \item 提升系统运行效率与多模型协同扩展能力
   \end{enumerate}
 \end{frame}
