@@ -121,6 +121,8 @@
 }
 
 \ProcessOptionsBeamer
+\providecommand{\insertadvisor}{}
+\newcommand{\setbeameradvisor}[1]{\gdef\insertadvisor{#1}}
 \PassOptionsToPackage{\xjtubeamer@cover}{beamerinnerthemexjtubeamer}
 \PassOptionsToPackage{\xjtubeamer@color}{beamercolorthemexjtubeamer}
 \PassOptionsToPackage{\xjtubeamer@color}{beamerinnerthemexjtubeamer}
@@ -676,17 +678,15 @@
   \end{beamercolorbox}%
   \vskip1em\par
   \begin{beamercolorbox}[sep=8pt,#1]{author}
-    \usebeamerfont{author}姓名：\insertauthor
+    \usebeamerfont{author}汇报人：\insertauthor
   \end{beamercolorbox}
-  % \vskip-6pt%
-  % \begin{beamercolorbox}[sep=8pt,#1]{idnum}
-  %   \usebeamerfont{author}学号：
-  % \end{beamercolorbox}
-  % \vskip-6pt%
-  % \begin{beamercolorbox}[sep=8pt,#1]{advisor}
-  %   \usebeamerfont{author}指导教师：
-  % \end{beamercolorbox}
-  % \vskip-6pt%
+  \ifx\insertadvisor\@empty
+  \else
+    \vskip-6pt%
+    \begin{beamercolorbox}[sep=8pt,#1]{author}
+      \usebeamerfont{author}指导教师：\insertadvisor
+    \end{beamercolorbox}
+  \fi
   \begin{beamercolorbox}[sep=8pt,#1]{date}
     \usebeamerfont{date}\insertdate
   \end{beamercolorbox}
