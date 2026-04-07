@@ -268,7 +268,6 @@ M3Sum\cite{wang2024m3sum}：该方法提出了一种模块化多模态免训练�
   \end{tblr}
 \end{table}
 
-\newpage
 \textbf{与免训练方法的比较。}\enspace 在同属免训练范式的方法中，本章方法在 SumMe 上分别高于 M3Sum-SP（43.6\%）和 M3Sum-PCoT（41.9\%）10.0 与 11.7 个百分点，优势显著。M3Sum 主要通过多模态文本化与无参数对齐机制完成摘要生成，而本章方法通过 Planner 全局规划与多 Expert 维度化评分将评价过程从单一语义判断拓展为多维度协同推理，因此在 SumMe 上取得了大幅度提升。与第三章提出的基于层级语义聚合的免训练方法（SumMe 48.1\%）相比，本章方法在 SumMe 上提升了 5.5 个百分点（53.6\% vs 48.1\%），表明多智能体协同推理在标注分歧较大的开放域视频上具有更强的鲁棒性与语义判别能力。在 TVSum 上，本章方法（55.6\%）低于第三章方法（61.1\%）5.5 个百分点，同时也略低于 M3Sum 的两个变体（56.9\%/57.6\%），关于这一差距的具体分析见下文。
 
 \textbf{与无监督方法的比较。}\enspace 本章方法在完全免训练的条件下，于 SumMe 上（53.6\%）大幅超越早期无监督方法 DR-DSN（41.4\%）与 OM-AE（37.7\%），分别取得 12.2 与 15.9 个百分点的提升。上述结果表明，基于视觉重构或自编码器的传统无监督方法在语义建模能力上存在明显瓶颈，而本章方法通过引入多智能体协同推理机制，在不进行任何参数学习的前提下，能够更有效地捕捉视频语义结构与关键事件。与近年较强的无监督基线 SUM-SR（51.3\%）和 SegSum（54.0\%）相比，本章方法在 SumMe 上与 SegSum 仅差 0.4 个百分点，并高于 SUM-SR 2.3 个百分点，已达到可比甚至更优的水平，而这两种方法均需在目标数据集上执行完整的训练流程。
@@ -336,13 +335,13 @@ LLMVS\cite{lee2025video}：该方法首先利用多模态大语言模型将视�
 \subsubsection{定性分析}
 为了从可解释性角度进一步观察模型行为，本文从 SumMe 与 TVSum 数据集中各选取一段代表性视频，结合段级推理结果与各维度评分曲线进行定性分析。图~\ref{fig:c4:vis_car_over_camera} 与图~\ref{fig:c4:vis_qqR6} 分别展示了两段视频的评分可视化结果。每幅图的上方展示模型评分与人工标注取得较高一致性的 6 个时刻所对应的视频帧缩略图；下方由上至下依次绘制 Planner 全局评分 $S_{\mathrm{plan}}$（蓝色）、Story Expert 叙事评分 $S_{\mathrm{story}}$（绿色）、Visual Expert 视觉高光评分 $S_{\mathrm{visual}}$（橙色）、Emotion Expert 情绪强度评分 $S_{\mathrm{emotion}}$（紫色）、Information Expert 信息增量评分 $S_{\mathrm{info}}$（红色）、加权专家综合评分 $S_{\mathrm{exp}}$（深红色）以及最终融合评分 $S_{\mathrm{final}}$（黑色）七条曲线，各子图中以灰色填充区域标示人工标注的重要性分布。
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=\textwidth]{c4/top3_car_over_camera.pdf}
   \caption{SumMe 数据集 Car Over Camera 视频的多智能体评分曲线与代表性关键帧可视化}\label{fig:c4:vis_car_over_camera}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}[!htb]
   \centering
   \includegraphics[width=\textwidth]{c4/method2_results_visualization_qqR6AEXwxoQ.pdf}
   \caption{TVSum 数据集 qqR6AEXwxoQ 视频的多智能体评分曲线与代表性关键帧可视化}\label{fig:c4:vis_qqR6}

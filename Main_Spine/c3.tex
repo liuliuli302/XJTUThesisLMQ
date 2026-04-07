@@ -1,6 +1,6 @@
 \xchapter{基于层级语义建模与全局主题约束的免训练视频摘要方法}{Training-Free Video Summarization Method Based on Hierarchical Semantic Modeling and Global Topic Constraints}
 
-随着短视频平台、监控系统与多媒体检索应用的持续发展，视频数据规模呈现持续增长趋势。面对长时、冗余且内容复杂的视频流，如何在有限时长约束下自动生成能够覆盖关键事件、体现核心场景并保持叙事主线的视频摘要，已成为视频理解领域的重要研究问题。已有视频摘要方法在公开数据集上取得了一定进展，但在开放域视频场景中仍普遍面临语义表达不足、对人工标注依赖较强以及跨场景泛化能力有限等问题。围绕上述挑战，本章围绕基于大语言模型的免训练视频摘要方法展开研究。首先分析现有方法在语义建模、结构建模与数据依赖方面的局限；随后给出一种面向开放域视频的层级化语义摘要框架，并对场景划分、多级描述生成、场景重要性评估以及帧级分数增强机制进行详细阐述；最后通过对比实验与消融实验验证所提方法的有效性，并对实验结果进行分析。
+已有视频摘要方法虽在公开数据集上取得了一定进展，但仍普遍面临底层视觉特征难以表征高层语义、对大规模人工标注依赖较强以及视频层级结构利用不充分等问题。为应对上述挑战，本章提出一种基于大语言模型的免训练视频摘要方法。该方法通过视频结构化分段、帧级视觉描述生成以及场景级与视频级文本逐层聚合，将视频内容映射至统一的文本语义空间，并利用大语言模型的零样本推理能力完成全局主题提取与场景级语义相关性评估，结合全局主题约束与局部视觉证据实现帧级重要性估计。本章首先分析现有方法的不足，然后概述所提框架的总体结构，并对场景划分、多级描述生成、场景重要性评估以及帧级分数增强等模块进行详细阐述。最后通过对比实验与消融实验验证方法的有效性，并对实验结果进行分析。
 
 \xsection{问题提出}{Problem Statement}
 
@@ -8,7 +8,7 @@
 
 \begin{figure}[htbp]
   \centering
-  \includegraphics[width=\textwidth]{c3/video_summarization_pipeline.pdf}
+  \includegraphics[width=\textwidth]{c3/video_summarization_pipeline_v2.pdf}
   \caption{视频摘要流程示意图}\label{fig:video_summary_pipeline}
 \end{figure}
 
@@ -22,7 +22,7 @@
 
 \begin{figure}
   \centering
-  \includegraphics[width=\textwidth]{c3/architecture.pdf}
+  \includegraphics[width=\textwidth]{c3/architecture_v2.pdf}
   \caption{基于大语言模型的免训练视频摘要框架结构图}\label{fig:architecture_framework}
 \end{figure}
 
@@ -364,19 +364,18 @@ LLMVS\cite{lee2025video}：该方法首先利用多模态大语言模型将视�
 \subsubsection{定性分析}
 为了从可解释性角度进一步观察模型行为，本文从 SumMe 与 TVSum 数据集中各选取一段代表性视频，对帧级评分曲线与关键帧选择结果进行可视化分析。图~\ref{fig:vis_playing_ball} 与图~\ref{fig:vis_WxtbjNsCQ8A} 分别展示了两段视频的帧级重要性评分曲线及代表性关键帧。每幅图的上方展示模型评分与人工标注取得较高一致性的 6 个时刻所对应的视频帧缩略图；下方由上至下依次绘制场景级语义评分 $S_{\mathrm{LLM}}$（蓝色）、帧--场景相似度 $S_{FS}$（绿色）、帧--视频全局相似度 $S_{FV}$（红色）以及最终融合评分 $F(p_j)$（黑色）四条曲线，各子图中以灰色填充区域标示人工标注的重要性分布，便于直观比较模型评分与参考标注之间的对应关系。
 
-\begin{figure}[htbp]
+\begin{figure}
   \centering
   \includegraphics[width=\textwidth]{c3/method1_results_visualization_playing_ball.pdf}
   \caption{SumMe 数据集 Playing Ball 视频的帧级评分曲线与代表性关键帧可视化}\label{fig:vis_playing_ball}
 \end{figure}
 
-\begin{figure}[htbp]
+\begin{figure}
   \centering
   \includegraphics[width=\textwidth]{c3/method1_results_visualization_WxtbjNsCQ8A.pdf}
   \caption{TVSum 数据集 WxtbjNsCQ8A 视频的帧级评分曲线与代表性关键帧可视化}\label{fig:vis_WxtbjNsCQ8A}
 \end{figure}
 
-\newpage
 \textbf{SumMe Playing Ball 视频分析。}\enspace 如图~\ref{fig:vis_playing_ball} 所示，该视频记录了动物与人之间的日常互动，整体叙事较为松散，属于典型的开放域视频。对此，$S_{\mathrm{LLM}}$ 呈现出明显的分段阶梯变化，对猫与球互动、犬只追逐等核心事件赋予较高场景分数，而对静态空镜与低动态过渡片段给出较低评分，说明所提方法能够较好地区分语义关键内容与冗余内容。在场景内部，$S_{FS}$ 进一步突出动作完整、主体清晰的代表性帧，$S_{FV}$ 则为与视频主旨高度一致但处于中低分场景中的局部关键帧提供补偿。最终融合评分 $F(p_j)$ 的高分区域与人工标注的重要性分布基本一致，表明本文方法在开放域视频中仍能较稳定地定位关键内容并抑制冗余片段。
 
 \textbf{TVSum WxtbjNsCQ8A 视频分析。}\enspace 如图~\ref{fig:vis_WxtbjNsCQ8A} 所示，该视频围绕养蜂人的日常劳作展开，主题明确、叙事主线清晰。与 SumMe 案例相比，$S_{\mathrm{LLM}}$ 在该视频中表现出更清楚的由低到高的层次变化：开场铺垫片段得分较低，进入蜂箱管理、蜂框检查和蜂蜜采集等核心环节后，场景分数明显上升并持续保持高位，较好反映了视频叙事重心的推进过程。同时，$S_{FS}$ 能够在高分场景内筛出更具代表性的操作帧，$S_{FV}$ 则持续强化与养蜂主题高度相关的关键画面。最终融合评分在核心劳动片段上形成连续高响应区间，与人工标注的高分区域较为一致，说明本文方法在主题集中的长视频中具有较好的排序稳定性与关键帧识别能力。
