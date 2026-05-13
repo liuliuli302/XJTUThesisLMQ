@@ -10,7 +10,7 @@
   \begin{itemize}
     \item 视频数据爆炸式增长，信息过载问题日益突出
     \item \textbf{视频摘要}：自动保留最关键的帧或片段，\\ 帮助用户快速把握视频内容
-    \item 传统方法普遍依赖标注与任务特定训练，\\ 跨场景泛化能力有限
+    \item 传统方法普遍依赖标注与任务特定训练，\\ 资源消耗大
   \end{itemize}
   % \vfill
   \begin{block}{研究趋势}
@@ -38,17 +38,16 @@
   \end{columns}
 \end{frame}
 
-\begin{frame}{论文结构}
+\begin{frame}{结构目录}
   \begin{enumerate}
-    \item \textbf{第一章}：绪论——研究背景、研究现状与研究内容
-    \item \textbf{第二章}：相关理论基础与技术原理
-    \item \textbf{第三章}：基于层级语义建模的免训练视频摘要方法
-    \item \textbf{第四章}：基于多智能体协同推理的视频摘要方法
-    \item \textbf{第五章}：结论与展望
+    \item 研究背景与动机
+    \item 相关理论基础
+    \item 基于层级语义建模的免训练视频摘要方法
+    \item 基于多智能体协同推理的视频摘要方法
+    \item 结论与展望
+    \item 质询问题回答
   \end{enumerate}
-
 \end{frame}
-
 
 %% ========================================
 %%  第二部分：相关理论基础
@@ -264,6 +263,41 @@
       \begin{itemize}
         \item TVSum 上 $\rho=0.280$ 为最高值
         \item SumMe 上整体仍优于多数传统监督方法
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vfill
+\end{frame}
+
+\begin{frame}{层级语义信息保留率分析}
+  \vfill
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}[c]{0.56\textwidth}
+      \begin{table}
+        \centering
+        \scriptsize
+        \begin{tblr}{
+          colspec={X[1.5,l] X[1,c] X[1.3,c] X[1.3,c] X[1,c]},
+          rowsep=0.8pt,
+        }
+          \toprule
+          \textbf{层级} & \textbf{数据集} & \textbf{ROUGE-1 R} & \textbf{BERTScore R} & \textbf{压缩率} \\
+          \midrule
+          \SetCell[r=2]{c}\textbf{帧→场景} & SumMe & $0.0078$ & $0.7896$ & $0.0110$ \\
+          & TVSum & $0.0095$ & $0.7894$ & $0.0117$ \\
+          \midrule
+          \SetCell[r=2]{c}\textbf{场景→视频} & SumMe & $0.2830$ & $0.8621$ & $0.4347$ \\
+          & TVSum & $0.2270$ & $0.8515$ & $0.3233$ \\
+          \bottomrule
+        \end{tblr}
+        \caption{层级语义聚合中的信息保留率与压缩率对比}
+      \end{table}
+    \end{column}
+    \begin{column}[c]{0.42\textwidth}
+      \begin{itemize}
+        \item \textbf{ROUGE-1 R} 低：反映词面改变，\\ LLM 进行了语义改写
+        \item \textbf{BERTScore R} 高：说明语义内容保留充分，\\ 实现了有效的\textbf{语义浓缩}而非简单截断
+        \item 压缩率合理：帧→场景高度浓缩（1\%），\\ 场景→视频适度融合（30--43\%）
       \end{itemize}
     \end{column}
   \end{columns}
@@ -648,6 +682,83 @@
   \vfill
 \end{frame}
 
+\begin{frame}{不同 LLM 后端对性能的影响}
+  \vfill
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}[c]{0.58\textwidth}
+      \begin{table}
+        \centering
+        \scriptsize
+        \begin{tblr}{
+          width=\linewidth,
+          colspec={lccc},
+          rowsep=1.5pt,
+        }
+          \toprule
+          \textbf{LLM 后端} & \textbf{SumMe} & \textbf{TVSum} & \textbf{均值} \\
+          \midrule
+          DeepSeek-V3.2 & 50.66 & 52.25 & 51.46 \\
+          Kimi-K2-Instruct & 51.37 & 53.48 & 52.43 \\
+          Qwen3-235B-Flash & 47.80 & 53.92 & 50.86 \\
+          MiniMax-M2.5 & 48.35 & \textbf{54.31} & 51.33 \\
+          \midrule
+          均值 $\pm$ 标准差 & $49.55{\pm}1.74$ & $53.49{\pm}0.89$ & --- \\
+          \bottomrule
+        \end{tblr}
+        \caption{不同 LLM 后端下的摘要性能（$N{=}16$，$F_1$\,\%）}
+      \end{table}
+    \end{column}
+    \begin{column}[c]{0.40\textwidth}
+      \begin{itemize}
+        \item 四种后端在两个数据集上的 $F_1$ 波动幅度有限
+        \item TVSum 跨模型标准差（0.89）小于 SumMe（1.74）
+        \item 多智能体框架对底层 LLM 具有良好鲁棒性，\\ 替换后端后性能保持基本一致
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vfill
+\end{frame}
+
+\begin{frame}{第四章计算开销分析}
+  \vfill
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}[c]{0.58\textwidth}
+      \begin{table}
+        \centering
+        \scriptsize
+        \begin{tblr}{
+          width=\linewidth,
+          colspec={lcc},
+          rowsep=1.2pt,
+        }
+          \toprule
+          \textbf{统计项} & \textbf{$N{=}16$} & \textbf{$N{=}32$} \\
+          \midrule
+          API 调用总数 & 5{,}994 & 11{,}914 \\
+          \quad 单视频调用数 & 81 & 161 \\
+          Prompt Token 总数 & 3.71M & 8.18M \\
+          Completion Token 总数 & 0.56M & 1.13M \\
+          Token 总计 & 4.27M & 9.31M \\
+          \midrule
+          单视频平均 Token & 57.7K & 125.9K \\
+          单视频平均费用 & ¥0.158 & ¥0.336 \\
+          \bottomrule
+        \end{tblr}
+        \caption{不同分段配置下的 Token 消耗与 API 费用（DeepSeek-V3.2）}
+      \end{table}
+    \end{column}
+    \begin{column}[c]{0.40\textwidth}
+      \begin{itemize}
+        \item $N{=}16$：单视频约 57.7K Token，\\ 费用约 ¥0.16
+        \item $N{=}32$：单视频约 125.9K Token，\\ 费用约 ¥0.34
+        \item 开销增长与调用次数增长（$\approx$1.99$\times$）基本一致
+        \item 免训练条件下单视频推理\\ 开销控制在较低水平
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \vfill
+\end{frame}
+
 
 %% ========================================
 %%  第五部分：结论与展望
@@ -676,4 +787,34 @@
     \item \textbf{提升长视频建模能力}：结合内容感知的自适应分段与动态检索式记忆机制，使推理单元更贴近真实事件边界，并增强长程语义一致性
     \item \textbf{面向用户需求的个性化摘要}：引入用户意图感知与动态专家权重调整机制，使摘要结果能够更好适配不同用户偏好与查询目标
   \end{enumerate}
+\end{frame}
+
+
+%% ========================================
+%%  第六部分：质询回答
+%% ========================================
+\section{质询回答}
+
+\begin{frame}
+  \begin{block}{质询问题1}
+    层级语义建模方法中，KTS 算法正则化参数 $\lambda$ 的自适应调整具体策略是什么？不同视频类型（如运动类）的最优 $\lambda$ 范围有何差异？
+  \end{block}
+  \vfill
+  \begin{itemize}
+    \item \textbf{$\lambda$ 的确定方式}：KTS 算法的正则化参数 $\lambda$ 并未设计随视频内容自适应调整的机制，而是一个全局固定的经验参数，并在所有视频上统一使用
+    \item \textbf{关于视频类型差异}：由于采用全局统一参数策略，未针对运动类、新闻类、Vlog 等不同视频类别分别标定最优 $\lambda$ 范围，因此目前没有不同类别对应的最优 $\lambda$ 差异分析
+  \end{itemize}
+  \vfill
+\end{frame}
+
+\begin{frame}
+  \begin{block}{质询问题2}
+    多智能体方法中，Planner Agent 动态分配专家权重的具体计算逻辑是什么？是否考虑了视频主题与专家维度的相关性量化？
+  \end{block}
+  \vfill
+  \begin{itemize}
+    \item \textbf{权重分配机制}：Planner Agent 基于全部片段描述，在单次 LLM 推理中同步输出视频主题标签、全局摘要 及四类 Expert 的归一化权重向量；不存在预设公式或外部参数，完全由 LLM 的上下文推理驱动
+    \item \textbf{主题--维度相关性}：已通过提示工程设计内嵌考虑——系统提示要求 Planner 显式输出视频主题，并基于主题判断各维度的相对重要性；权重由 LLM 根据语义理解隐式推断，未引入显式的主题--维度相关性量化公式
+  \end{itemize}
+  \vfill
 \end{frame}

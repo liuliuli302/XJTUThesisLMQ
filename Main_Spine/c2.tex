@@ -9,9 +9,9 @@
 
 视频摘要的目标是从一段视频中选取能够概括其核心内容的子集，使观看者能够在远少于原片时长的条件下获取视频的主要信息\cite{gygli2014creating,song2015tvsum}。如图~\ref{fig:video_summary} 所示，典型的视频摘要流程可以划分为如下阶段：首先对原始视频进行镜头划分，将连续帧序列切分为语义或视觉上相对连贯的视频片段；之后由视频摘要算法对各片段的重要性进行评估；最后依据重要性排序与时长约束选出关键片段，按时间顺序拼接后得到最终摘要视频。设一段视频由 $T$ 帧图像构成 $\mathcal{V}=\{f_t \mid t=1,2,\ldots,T\}$，其中 $f_t$ 为第 $t$ 帧图像。镜头划分将 $\mathcal{V}$ 切分为 $N$ 个互不重叠且完整覆盖所有帧的连续片段： $\mathcal{S}=\{s_1,s_2,\ldots,s_N\}$，每个片段由一段连续帧组成：
 \begin{equation}
-  s_k = \{f_t \mid t_k^{\mathrm{s}} \leq t \leq t_k^{\mathrm{e}}\}, \qquad k=1,2,\ldots,N,
+  s_k = \{f_t \mid t_k^{\mathrm{s}} \leq t \leq t_k^{\mathrm{e}},\; k=1,2,\ldots,N\}
 \end{equation}
-式中，$t_k^{\mathrm{s}}$ 和 $t_k^{\mathrm{e}}$——第 $k$ 个片段的起始帧索引和终止帧索引；$N$——片段总数。
+式中：$t_k^{\mathrm{s}}$ 和 $t_k^{\mathrm{e}}$——第 $k$ 个片段的起始帧索引和终止帧索引；$N$——片段总数。
 
 \begin{figure}[htbp]
 \centering
@@ -27,7 +27,7 @@
 \begin{equation}\label{eq:knapsack}
   \mathcal{S}^{*} = \arg\max_{\mathcal{A}\subseteq\mathcal{S}} \sum_{s_k \in \mathcal{A}} y_k \cdot l_k, \qquad \mathrm{s.t.} \quad \sum_{s_k \in \mathcal{A}} l_k \leq L,
 \end{equation}
-式中，$\mathcal{S}^{*}$——最优关键镜头子集；$\mathcal{A}$——候选子集；$y_k$——片段 $s_k$ 的重要性分数；$l_k$——片段帧数；$L$——时长预算。最终，将 $\mathcal{S}^{*}$ 中所选片段按原始时间顺序拼接即可得到最终视频摘要。
+式中：$\mathcal{S}^{*}$——最优关键镜头子集；$\mathcal{A}$——候选子集；$y_k$——片段 $s_k$ 的重要性分数；$l_k$——片段帧数；$L$——时长预算。最终，将 $\mathcal{S}^{*}$ 中所选片段按原始时间顺序拼接即可得到最终视频摘要。
 
 \xsubsection{数据集与评价指标}{Datasets and Evaluation Metrics}
 视频摘要领域常用的公开基准数据集主要包括：SumMe\cite{gygli2014creating} 和 TVSum\cite{song2015tvsum}。SumMe 数据集包含 25 段用户生成的原始视频，内容涵盖假期旅行、烹饪、极限运动及日常活动等多种场景，视频时长从 1.5 分钟到 6.5 分钟不等。每段视频由 15 至 18 位独立标注者分别标记其认为最能代表视频核心内容的片段，最终形成片段级的多人摘要标注。TVSum 数据集包含 50 段从 YouTube 收集的视频，覆盖新闻事件、纪录片、操作教程（How-to）、Vlog 等 10 个预定义主题类别，每类各含 5 段视频。TVSum 为每段视频提供 20 位标注者逐帧给出的重要性评分，分值范围为 1 至 5 的整数。
@@ -36,13 +36,13 @@
 \begin{equation}
   F_1 = \frac{2PR}{P + R}, \qquad P = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{sys}}|}, \qquad R = \frac{|\mathbf{S}_{\mathrm{sys}}\cap \mathbf{S}_{\mathrm{gt}}|}{|\mathbf{S}_{\mathrm{gt}}|},
 \end{equation}
-式中，$P$——精确率；$R$——召回率；由于每段视频包含多位标注者，SumMe 取所有标注者 $F_1$ 的最大值（Max $F_1$），TVSum 取算术平均（Avg $F_1$）。
+式中：$P$——精确率；$R$——召回率；由于每段视频包含多位标注者，SumMe 取所有标注者 $F_1$ 的最大值（Max $F_1$），TVSum 取算术平均（Avg $F_1$）。
 
 秩相关系数用于比较模型输出的帧级分数序列与人工标注帧级分数序列之间的排序一致性。设两个长度为 $T$ 的分数序列分别为 $\mathbf{x}$ 和 $\mathbf{y}$，其秩序列为 $\mathrm{rk}(x_i)$ 和 $\mathrm{rk}(y_i)$，则 Spearman 秩相关系数与 Kendall 秩相关系数分别定义为
 \begin{equation}
   \rho = 1 - \frac{6\sum_{i=1}^{T}[\mathrm{rk}(x_i)-\mathrm{rk}(y_i)]^{2}}{T(T^{2}-1)}, \qquad \tau = \frac{C - D}{\binom{T}{2}},
 \end{equation}
-式中，$\rho$——Spearman 系数；$\tau$——Kendall 系数；$C$——一致对数；$D$——不一致对数。Spearman系数和 Kendall 系数的取值均在 $[-1,1]$，值越大表示模型排序与人工排序越一致。
+式中：$\rho$——Spearman 系数；$\tau$——Kendall 系数；$C$——一致对数；$D$——不一致对数。Spearman系数和 Kendall 系数的取值均在 $[-1,1]$，值越大表示模型排序与人工排序越一致。
 
 \xsection{大语言模型技术基础}{Technical Foundations of Large Language Models}\label{sec:llm_tech}
 
@@ -67,7 +67,7 @@ Transformer 的输入首先经过词嵌入层，将离散词元映射为 $d$ 维
 \begin{equation}\label{eq:attention}
 \mathrm{Attention}(Q,K,V)=\mathrm{Softmax}\!\left(\frac{QK^{\top}}{\sqrt{d_k}}\right)V,
 \end{equation}
-式中，$d_k$——键向量维度；$\sqrt{d_k}$ 为缩放因子，用于防止点积值过大导致 Softmax 梯度过小。序列中每个位置的输出是所有位置值向量的加权和，权重由查询与键之间的相似度决定。
+式中：$d_k$——键向量维度；$\sqrt{d_k}$ 为缩放因子，用于防止点积值过大导致 Softmax 梯度过小。序列中每个位置的输出是所有位置值向量的加权和，权重由查询与键之间的相似度决定。
 
 在实际计算上，Transformer 将注意力计算拆分为 $h$ 个相互独立的注意力头并行执行。各注意力头的输出在拼接后再经过线性变换，得到多头注意力的最终结果。其表达式为
 \begin{equation}
@@ -76,7 +76,7 @@ Transformer 的输入首先经过词嵌入层，将离散词元映射为 $d$ 维
 \begin{equation}
 \mathrm{FFN}(x)=\mathrm{ReLU}(xW_1+b_1)\,W_2+b_2,
 \end{equation}
-式中，$\mathrm{head}_i$——第 $i$ 个注意力头的输出；$h$——注意力头的数量；$W^O,W_1,W_2$——可学习参数；$b_1$、$b_2$——偏置项。不同注意力头使用各自独立的参数学习不同的上下文信息，前馈神经网络则对序列中每个位置独立执行相同的非线性变换，以进一步增强表示能力。
+式中：$\mathrm{head}_i$——第 $i$ 个注意力头的输出；$h$——注意力头的数量；$W^O,W_1,W_2$——可学习参数；$b_1$、$b_2$——偏置项。不同注意力头使用各自独立的参数学习不同的上下文信息，前馈神经网络则对序列中每个位置独立执行相同的非线性变换，以进一步增强表示能力。
 
 \xsubsection{大语言模型提示工程}{Prompt Engineering for Large Language Models}
 
@@ -130,7 +130,7 @@ CLIP\cite{radford2021learning} 采用双编码器结构分别处理图像和文�
 \mathcal{L}_{\mathrm{CLIP}}=-\frac{1}{N}\sum_{i=1}^{N}\log
 \frac{\exp(\mathrm{sim}(f_v(I_i),f_t(T_i))/\tau)}{\sum_{j=1}^{N}\exp(\mathrm{sim}(f_v(I_i),f_t(T_j))/\tau)},
 \end{equation}
-式中，$\mathrm{sim}(\cdot,\cdot)$——图像表示与文本表示之间的相似度函数；$\tau$——温度系数。该目标函数的作用是增大匹配图文对的相似度，同时减小不匹配样本之间的相似度。
+式中：$\mathrm{sim}(\cdot,\cdot)$——图像表示与文本表示之间的相似度函数；$\tau$——温度系数。该目标函数的作用是增大匹配图文对的相似度，同时减小不匹配样本之间的相似度。
 
 \begin{figure}[tbp]
 \centering
@@ -144,7 +144,7 @@ CLIP 的图文对齐语义空间使其能够直接用于零样本分类、图文
 \begin{equation}
 \mathbf{Z}=\mathrm{QFormer}(\mathbf{Q},\mathbf{F}_v),
 \end{equation}
-式中，$\mathbf{Z}$——经过 Q-Former 压缩后的视觉语义嵌入，其维度远小于原始视觉特征，可直接作为语言模型的输入嵌入。
+式中：$\mathbf{Z}$——经过 Q-Former 压缩后的视觉语义嵌入，其维度远小于原始视觉特征，可直接作为语言模型的输入嵌入。
 
 \begin{figure}[tbp]
 \centering
@@ -158,7 +158,7 @@ CLIP 的图文对齐语义空间使其能够直接用于零样本分类、图文
 \begin{equation}
 \mathbf{H}_v=W_p\,\mathbf{F}_v,
 \end{equation}
-式中，$W_p$——可训练的投影矩阵；$\mathbf{H}_v$——投影后的视觉嵌入序列。视觉嵌入与文本指令拼接后送入语言模型，以自回归语言建模损失进行端到端训练。在这一设置下，跨模态对齐不再单独作为相似度优化问题出现，而是作为生成任务的一部分被联合学习。
+式中：$W_p$——可训练的投影矩阵；$\mathbf{H}_v$——投影后的视觉嵌入序列。视觉嵌入与文本指令拼接后送入语言模型，以自回归语言建模损失进行端到端训练。在这一设置下，跨模态对齐不再单独作为相似度优化问题出现，而是作为生成任务的一部分被联合学习。
 
 从 CLIP 到 BLIP-2 再到端到端多模态大模型，跨模态对齐的目标由全局匹配逐步转向面向生成任务的语义建模，视觉内容的文本化表示也从全局语义向量扩展为可供语言模型直接处理的嵌入序列。
 
@@ -174,13 +174,13 @@ Agent 的核心思想是将大语言模型从单轮问答工具扩展为具有�
 \begin{equation}
 a_t^{*}=\arg\max_{a} P_{\theta}(a\mid s_t,\tau_t,m_t),
 \end{equation}
-式中，$a_t^{*}$——时刻 $t$ 的最优动作；$P_{\theta}(\cdot)$——由大语言模型参数 $\theta$ 定义的策略分布；$s_t$——当前状态；$\tau_t$——历史交互；$m_t$——记忆上下文。该表达式说明，Agent 的决策不是静态地依赖当前输入，而是综合考虑了历史状态、先前动作及其反馈结果。
+式中：$a_t^{*}$——时刻 $t$ 的最优动作；$P_{\theta}(\cdot)$——由大语言模型参数 $\theta$ 定义的策略分布；$s_t$——当前状态；$\tau_t$——历史交互；$m_t$——记忆上下文。该表达式说明，Agent 的决策不是静态地依赖当前输入，而是综合考虑了历史状态、先前动作及其反馈结果。
 
 在执行动作后，系统还需基于反馈更新内部记忆，其状态更新过程可写为
 \begin{equation}
 m_{t+1}=f(m_t,s_t,a_t,o_t),
 \end{equation}
-式中，$m_{t+1}$——更新后的记忆状态；$f(\cdot)$——记忆更新函数；$a_t$——执行动作；$o_t$——环境反馈。通过这一更新机制，智能体在后续步骤中能够复用先前积累的交互经验，从而在多步推理过程中保持决策的连续性与一致性。
+式中：$m_{t+1}$——更新后的记忆状态；$f(\cdot)$——记忆更新函数；$a_t$——执行动作；$o_t$——环境反馈。通过这一更新机制，智能体在后续步骤中能够复用先前积累的交互经验，从而在多步推理过程中保持决策的连续性与一致性。
 
 上述形式化框架在实际应用中主要体现为三种基本决策模式。第一种是推理行动交替模式，即智能体在每个决策步骤先以链式思维生成推理过程，再据此选择具体动作，使规划与执行形成可追溯的交替循环\cite{yao2023react}。第二种是工具调用扩展模式，即智能体在推理过程中根据需要主动调用外部 API 或计算工具，将模型自身不擅长的操作委托给专用模块完成\cite{schick2024toolformer}。第三种是反思修正模式，即智能体在执行失败后将反馈信息写入记忆，并在下一轮尝试中依据该反馈调整策略，从而实现自适应纠错\cite{shinn2024reflexion}。这三种模式分别对应智能体决策闭环中的规划、执行与反馈环节，可根据任务需求灵活组合。
 
@@ -197,13 +197,13 @@ a_i^{*}=\arg\max_{a_i} P_{\theta_i}(a_i\mid s_t,m_i,c_t),
 \begin{equation}\label{eq:peer_aggregation}
 H_t=\sum_{i=1}^{N}\omega_i h_i, \qquad \omega_i=\frac{\exp(e_i)}{\sum_{j=1}^{N}\exp(e_j)},
 \end{equation}
-式中，$H_t$——时刻 $t$ 的全局协同结果；$\omega_i$——第 $i$ 个智能体的聚合权重；$e_i$——其重要性评分；$N$——参与协作的智能体数量。
+式中：$H_t$——时刻 $t$ 的全局协同结果；$\omega_i$——第 $i$ 个智能体的聚合权重；$e_i$——其重要性评分；$N$——参与协作的智能体数量。
 
 然而，实际系统中各智能体往往承担不同层次的职责。在层次化协作拓扑下，通常设有一个规划者（Planner）智能体从全局视角制定任务策略并分配权重，以及若干专家（Expert）智能体分别聚焦于不同评价维度\cite{hong2024metagpt}。规划者首先对输入进行全局分析并给出主判断，各专家再从各自维度进行互补推理，最终由规划者赋予的权重进行聚合。这种层次化设计一方面提升了决策依据的可解释性，另一方面也使系统能够根据输入特性动态调整各维度的评价侧重。设规划者给出的主判断为 $p_k$，第 $m$ 个专家对输入 $k$ 的判断为 $e_k^{(m)}$，专家权重为 $w_m$，则最终输出可写为
 \begin{equation}
 \hat{y}_k=p_k+\sum_{m\in\mathcal{M}} w_m e_k^{(m)}, \qquad \sum_{m\in\mathcal{M}} w_m = 1,
 \end{equation}
-式中，$\hat{y}_k$——第 $k$ 个输入的最终综合判断；$\mathcal{M}$——专家集合；$w_m$——第 $m$ 个专家的权重。与式~\eqref{eq:peer_aggregation} 的对等聚合相比，该公式显式区分了规划者的全局主判断与专家的局部维度补充，体现了层次化协作的核心思路。综上，多智能体协作机制通过角色分工缓解了单一模型同时处理多评价维度时的推理负担，并通过规划者与专家之间的层次化组织，提高了决策过程对全局目标的服从性。无论是对等拓扑还是层次化拓扑，加权聚合都使系统能够将多源局部判断融合为一致的全局输出，为复杂多维判断任务提供了一种结构化、可解释且可扩展的推理组织方式。
+式中：$\hat{y}_k$——第 $k$ 个输入的最终综合判断；$\mathcal{M}$——专家集合；$w_m$——第 $m$ 个专家的权重。与式~\eqref{eq:peer_aggregation} 的对等聚合相比，该公式显式区分了规划者的全局主判断与专家的局部维度补充，体现了层次化协作的核心思路。综上，多智能体协作机制通过角色分工缓解了单一模型同时处理多评价维度时的推理负担，并通过规划者与专家之间的层次化组织，提高了决策过程对全局目标的服从性。无论是对等拓扑还是层次化拓扑，加权聚合都使系统能够将多源局部判断融合为一致的全局输出，为复杂多维判断任务提供了一种结构化、可解释且可扩展的推理组织方式。
 
 \xsubsection{智能体记忆机制}{Agent Memory Mechanism}\label{subsec:memory_agent}
 
@@ -213,7 +213,7 @@ H_t=\sum_{i=1}^{N}\omega_i h_i, \qquad \omega_i=\frac{\exp(e_i)}{\sum_{j=1}^{N}\
 \begin{equation}
 \mathcal{M}_k^{(h)} = \{c_{k-h},c_{k-h+1},\ldots,c_{k-1}\},
 \end{equation}
-式中，$\mathcal{M}_k^{(h)}$——第 $k$ 步的短期记忆；$c_i$——第 $i$ 步的输入描述；$h$——历史窗口长度。通过将这些历史描述与当前输入共同送入智能体，系统能够判断当前内容是在推进主线、重复已有信息，还是构成语义过渡。然而，短期记忆受窗口大小约束，当序列较长时，早期信息将不可避免地被截断。
+式中：$\mathcal{M}_k^{(h)}$——第 $k$ 步的短期记忆；$c_i$——第 $i$ 步的输入描述；$h$——历史窗口长度。通过将这些历史描述与当前输入共同送入智能体，系统能够判断当前内容是在推进主线、重复已有信息，还是构成语义过渡。然而，短期记忆受窗口大小约束，当序列较长时，早期信息将不可避免地被截断。
 
 长期记忆则通过摘要压缩或外部存储的方式，跨越上下文窗口限制保留关键信息。其实现通常依赖两种核心策略：一是基于重要性衰减的动态管理，即为每条记忆赋予时效权重，随时间推移自动淘汰低重要性条目\cite{zhong2024memorybank}；二是基于多维加权的按需检索，即将历史交互写入外部存储，在需要时按相关性、时效性和重要性等维度综合评分后召回相关片段\cite{park2023generative}。前者侧重于控制记忆规模，后者侧重于提升召回精度，二者的共同目标是在有限存储预算下尽可能保留对当前决策最有价值的历史信息。
 
